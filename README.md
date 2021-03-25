@@ -22,8 +22,14 @@ MobileNetV3| | | | |
 sh scripts/VOC2007.sh
 sh scripts/VOC2012.sh
 ``` 
-2. Create lmdb ```sh scripts/create.sh ``` 
-3. ```python train.py```  
+2. Create lmdb
+ ```
+ sh scripts/create.sh 
+ ``` 
+3. 
+```
+python train.py
+```  
 
 ## Under construction
 
