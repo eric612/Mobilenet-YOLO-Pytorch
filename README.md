@@ -24,11 +24,11 @@ sh scripts/VOC2012.sh
 ``` 
 2. Create lmdb
  ```
- sh scripts/create.sh 
+sh scripts/create.sh 
  ``` 
 3. Start training
 ```
-python train.py
+sh scripts/train.sh 
 ```  
 
 ## Under construction
