@@ -7,101 +7,7 @@ import torchvision.transforms.functional as FT
 from torchvision import transforms
 from PIL import Image, ImageDraw, ImageFont
 import cv2
-def xy_to_cxcy(xy):
-    """
-    Convert bounding boxes from boundary coordinates (x_min, y_min, x_max, y_max) to center-size coordinates (c_x, c_y, w, h).
-
-    :param xy: bounding boxes in boundary coordinates, a tensor of size (n_boxes, 4)
-    :return: bounding boxes in center-size coordinates, a tensor of size (n_boxes, 4)
-    """
-    return torch.cat([(xy[:, 2:] + xy[:, :2]) / 2,  # c_x, c_y
-                      xy[:, 2:] - xy[:, :2]], 1)  # w, h
-
-def cxcy_to_xy(cxcy):
-    """
-    Convert bounding boxes from center-size coordinates (c_x, c_y, w, h) to boundary coordinates (x_min, y_min, x_max, y_max).
-
-    :param cxcy: bounding boxes in center-size coordinates, a tensor of size (n_boxes, 4)
-    :return: bounding boxes in boundary coordinates, a tensor of size (n_boxes, 4)
-    """
-    return torch.cat([cxcy[:, :2] - (cxcy[:, 2:] / 2),  # x_min, y_min
-                      cxcy[:, :2] + (cxcy[:, 2:] / 2)], 1)  # x_max, y_max
-
-def cxcy_to_gcxgcy(cxcy, priors_cxcy):
-    """
-    Encode bounding boxes (that are in center-size form) w.r.t. the corresponding prior boxes (that are in center-size form).
-
-    For the center coordinates, find the offset with respect to the prior box, and scale by the size of the prior box.
-    For the size coordinates, scale by the size of the prior box, and convert to the log-space.
-
-    In the model, we are predicting bounding box coordinates in this encoded form.
-
-    :param cxcy: bounding boxes in center-size coordinates, a tensor of size (n_priors, 4)
-    :param priors_cxcy: prior boxes with respect to which the encoding must be performed, a tensor of size (n_priors, 4)
-    :return: encoded bounding boxes, a tensor of size (n_priors, 4)
-    """
-
-    # The 10 and 5 below are referred to as 'variances' in the original Caffe repo, completely empirical
-    # They are for some sort of numerical conditioning, for 'scaling the localization gradient'
-    # See https://github.com/weiliu89/caffe/issues/155
-    return torch.cat([(cxcy[:, :2] - priors_cxcy[:, :2]) / (priors_cxcy[:, 2:] / 10),  # g_c_x, g_c_y
-                      torch.log(cxcy[:, 2:] / priors_cxcy[:, 2:]) * 5], 1)  # g_w, g_h
-
-def gcxgcy_to_cxcy(gcxgcy, priors_cxcy):
-    """
-    Decode bounding box coordinates predicted by the model, since they are encoded in the form mentioned above.
-
-    They are decoded into center-size coordinates.
-
-    This is the inverse of the function above.
-
-    :param gcxgcy: encoded bounding boxes, i.e. output of the model, a tensor of size (n_priors, 4)
-    :param priors_cxcy: prior boxes with respect to which the encoding is defined, a tensor of size (n_priors, 4)
-    :return: decoded bounding boxes in center-size form, a tensor of size (n_priors, 4)
-    """
-
-    return torch.cat([gcxgcy[:, :2] * priors_cxcy[:, 2:] / 10 + priors_cxcy[:, :2],  # c_x, c_y
-                      torch.exp(gcxgcy[:, 2:] / 5) * priors_cxcy[:, 2:]], 1)  # w, h
-
-def find_intersection(set_1, set_2):
-    """
-    Find the intersection of every box combination between two sets of boxes that are in boundary coordinates.
-
-    :param set_1: set 1, a tensor of dimensions (n1, 4)
-    :param set_2: set 2, a tensor of dimensions (n2, 4)
-    :return: intersection of each of the boxes in set 1 with respect to each of the boxes in set 2, a tensor of dimensions (n1, n2)
-    """
-
-    # PyTorch auto-broadcasts singleton dimensions
-    lower_bounds = torch.max(set_1[:, :2].unsqueeze(1), set_2[:, :2].unsqueeze(0))  # (n1, n2, 2)
-    upper_bounds = torch.min(set_1[:, 2:].unsqueeze(1), set_2[:, 2:].unsqueeze(0))  # (n1, n2, 2)
-    intersection_dims = torch.clamp(upper_bounds - lower_bounds, min=0)  # (n1, n2, 2)
-    return intersection_dims[:, :, 0] * intersection_dims[:, :, 1]  # (n1, n2)
-
-def find_jaccard_overlap(set_1, set_2):
-    """
-    Find the Jaccard Overlap (IoU) of every box combination between two sets of boxes that are in boundary coordinates.
-
-    :param set_1: set 1, a tensor of dimensions (n1, 4)
-    :param set_2: set 2, a tensor of dimensions (n2, 4)
-    :return: Jaccard Overlap of each of the boxes in set 1 with respect to each of the boxes in set 2, a tensor of dimensions (n1, n2)
-    """
-
-    # Find intersections
-    intersection = find_intersection(set_1, set_2)  # (n1, n2)
-
-    # Find areas of each box in both sets
-    areas_set_1 = (set_1[:, 2] - set_1[:, 0]) * (set_1[:, 3] - set_1[:, 1])  # (n1)
-    areas_set_2 = (set_2[:, 2] - set_2[:, 0]) * (set_2[:, 3] - set_2[:, 1])  # (n2)
-
-    # Find the union
-    # PyTorch auto-broadcasts singleton dimensions
-    union = areas_set_1.unsqueeze(1) + areas_set_2.unsqueeze(0) - intersection  # (n1, n2)
-
-    # #box iou
-    # output = intersection/ areas_set_2
-
-    return intersection / union  # (n1, n2)
+from utils.iou import*
 
 class Image_Augmentation():
 
@@ -250,33 +156,6 @@ class Image_Augmentation():
 
         return new_image, new_boxes
 
-    def resize_od(self,image, boxes, dims=(300, 300), return_percent_coords=True):
-        """
-        Resize image. For the SSD300, resize to (300, 300).
-
-        Since percent/fractional coordinates are calculated for the bounding boxes (w.r.t image dimensions) in this process,
-        you may choose to retain them.
-
-        :param image: image, a PIL Image
-        :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
-        :return: resized image, updated bounding box coordinates (or fractional coordinates, in which case they remain the same)
-        """
-        # Resize image
-        # new_image = FT.resize(image, dims)
-        new_image = FT.to_tensor(image)
-        new_image = torch.nn.functional.interpolate(new_image.unsqueeze(0), size=dims[0], mode='bilinear',align_corners=False).squeeze(0)
-        new_image = FT.to_pil_image(new_image)
-
-
-        # Resize bounding boxes
-        old_dims = torch.FloatTensor([image.width, image.height, image.width, image.height]).unsqueeze(0)
-        new_boxes = boxes / old_dims  # percent coordinates
-
-        if not return_percent_coords:
-            new_dims = torch.FloatTensor([dims[1], dims[0], dims[1], dims[0]]).unsqueeze(0)
-            new_boxes = new_boxes * new_dims
-
-        return new_image, new_boxes
 
     def photometric_distort(self,image):
         """
@@ -356,26 +235,5 @@ class Image_Augmentation():
             if random.random() < 0.5:
                 new_image, new_boxes = self.flip_od(new_image, new_boxes)
 
-        # Resize image to (H, W) - this also converts absolute boundary coordinates to their fractional form
-        #new_image, new_boxes = self.resize_od(new_image, new_boxes, dims=dims)
-        '''
-        draw = ImageDraw.Draw(new_image)     
-        for i in range(len(new_boxes)):
-            # Boxes
-            box_location = (new_boxes[i]*dims[0]).tolist()
-            #print(box_location)
-            draw.rectangle(xy=box_location,outline='#e6194b')
-            #draw.rectangle([0,0,1,1])
-            #draw.rectangle(xy=[l + 1. for l in box_location])  # a second rectangle at an offset of 1 pixel to increase line thickness
-        del draw 
-        cv2.imwrite('frame.jpg', cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR))
-        '''
-             
-        # Convert PIL image to Torch tensor
-        #new_image = FT.to_tensor(new_image)
-
-
-        # Normalize by mean and standard deviation of ImageNet data that our base VGG was trained on
-        #new_image = FT.normalize(new_image, mean=mean, std=std)
 
         return new_image, new_boxes, new_labels, new_difficulties

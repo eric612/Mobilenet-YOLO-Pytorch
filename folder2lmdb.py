@@ -25,7 +25,7 @@ import random
 import yaml
 
 class ImageFolderLMDB(data.Dataset):
-    def __init__(self, db_path,  transform=None, phase=None):
+    def __init__(self, db_path,transform_size = [[352,352]], phase=None):
         self.db_path = db_path
         self.env = lmdb.open(db_path, subdir=os.path.isdir(db_path),
                              readonly=True, lock=False,
@@ -36,12 +36,7 @@ class ImageFolderLMDB(data.Dataset):
         self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])            
         
-        self.transform = transforms.Compose([
-                transforms.Resize(size=(352,352), interpolation=2),
-                transforms.ToTensor(),
-                self.normalize,
-            ])  
-        
+        self.transform_size = transform_size
         self.phase = phase
         self.img_aug = Image_Augmentation()
 
@@ -93,14 +88,7 @@ class ImageFolderLMDB(data.Dataset):
         new_boxes2 = torch.cat((x,y,w.unsqueeze(1),h.unsqueeze(1)),1)
 
         new_target = torch.cat((new_labels.unsqueeze(1),new_boxes2),1)
-        #print(len(target),new_target.shape)
-        #print(torch.Tensor(target).shape)
-        #new_img,new_target = self.aug_image(img,target)
-        #else :
-        #    new_img,new_target = img , target
-        #image = Image.fromarray(cv2.cvtColor(new_img,cv2.COLOR_BGR2RGB))  
-        #if self.transform is not None:
-        #    image = self.transform(image)
+
 
         return (new_img,new_target)
 
@@ -115,19 +103,12 @@ class ImageFolderLMDB(data.Dataset):
 
         images = list()
         labels = list()
-        if self.phase == 'train':
-            random_size = random.choice([(352,352),(320,320),(384,384),(288,288),(416,416)])
-            self.transform = transforms.Compose([
-                    transforms.Resize(size=random_size, interpolation=2),
-                    transforms.ToTensor(),
-                    self.normalize,
-                ])
-        else :
-            self.transform = transforms.Compose([
-                    transforms.Resize(size=(352,352), interpolation=2),
-                    transforms.ToTensor(),
-                    self.normalize,
-                ])  
+        random_size = random.choice(self.transform_size)
+        self.transform = transforms.Compose([
+                transforms.Resize(size=random_size, interpolation=2),
+                transforms.ToTensor(),
+                self.normalize,
+            ])  
         
         for b in batch:
             images.append(self.transform(b[0]))

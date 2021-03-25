@@ -1,6 +1,7 @@
 """Useful utils
 """
 from .misc import *
+from .logger import *
 
 # progress bar
 import os, sys
