@@ -24,17 +24,17 @@ import numpy as np
 import shutil
 import random
 trainval_dataset_path =  { \
-	"imgs":['data/VOC2007/JPEGImages/','data/VOC2012/JPEGImages/'],  \
-    "annos":['data/VOC2007/Annotations/','data/VOC2012/Annotations/'],  \
-    "lists":['data/VOC2007/ImageSets/Main/trainval.txt','data/VOC2012/ImageSets/Main/trainval.txt'], \
+	"imgs":['data/VOCdevkit/VOC2007/JPEGImages/','data/VOCdevkit/VOC2012/JPEGImages/'],  \
+    "annos":['data/VOCdevkit/VOC2007/Annotations/','data/VOCdevkit/VOC2012/Annotations/'],  \
+    "lists":['data/VOCdevkit/VOC2007/ImageSets/Main/trainval.txt','data/VOCdevkit/VOC2012/ImageSets/Main/trainval.txt'], \
     "name" :'voc_trainval',  \
     "lmdb" :'train-lmdb'  \
 }
 
 test_dataset_path =  { \
-	"imgs":['data/VOC2007/JPEGImages/'],  \
-	"annos":['data/VOC2007/Annotations/'],  \
-    "lists":['data/VOC2007/ImageSets/Main/test.txt'],  \
+	"imgs":['data/VOCdevkit/VOC2007/JPEGImages/'],  \
+	"annos":['data/VOCdevkit/VOC2007/Annotations/'],  \
+    "lists":['data/VOCdevkit/VOC2007/ImageSets/Main/test.txt'],  \
     "name" :'voc_test',  \
     "lmdb" :'test-lmdb'  \
 }

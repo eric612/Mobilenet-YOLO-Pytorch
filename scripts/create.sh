@@ -1,1 +1,1 @@
-python folder2lmdb.py --dataset ./data/VOC2007/ 
+python folder2lmdb.py --dataset ./data/VOCdevkit/VOC2007/ 
