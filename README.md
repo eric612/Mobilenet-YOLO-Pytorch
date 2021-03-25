@@ -17,7 +17,7 @@ MobileNetV3| | | | |
 
 ## Training steps
 
-1. Download dataset VOCdevkit/ , if already have VOC2007 and VOC2012 dataset , skip this step
+1. Download dataset VOCdevkit/ , if already have , please skip this step
 ```
 scripts/VOC2007.sh
 scripts/VOC2012.sh

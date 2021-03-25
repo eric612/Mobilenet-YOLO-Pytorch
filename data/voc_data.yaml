@@ -1,0 +1,12 @@
+test_dataset_path:
+  annos: [data/VOCdevkit/VOC2007/Annotations/]
+  imgs: [data/VOCdevkit/VOC2007/JPEGImages/]
+  lists: [data/VOCdevkit/VOC2007/ImageSets/Main/test.txt]
+  lmdb: test-lmdb
+  name: voc_test
+trainval_dataset_path:
+  annos: [data/VOCdevkit/VOC2007/Annotations/, data/VOCdevkit/VOC2012/Annotations/]
+  imgs: [data/VOCdevkit/VOC2007/JPEGImages/, data/VOCdevkit/VOC2012/JPEGImages/]
+  lists: [data/VOCdevkit/VOC2007/ImageSets/Main/trainval.txt, data/VOCdevkit/VOC2012/ImageSets/Main/trainval.txt]
+  lmdb: train-lmdb
+  name: voc_trainval

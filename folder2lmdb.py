@@ -15,7 +15,6 @@ import torch.utils.data as data
 from utils.image_augmentation import Image_Augmentation
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
-from torchvision.datasets import ImageFolder
 from torchvision import transforms, datasets
 # This segfaults when imported before torch: https://github.com/apache/arrow/issues/2637
 from data.od_dataset_from_file import DatasetFromFile
@@ -23,21 +22,8 @@ import cv2
 import numpy as np
 import shutil
 import random
-trainval_dataset_path =  { \
-	"imgs":['data/VOCdevkit/VOC2007/JPEGImages/','data/VOCdevkit/VOC2012/JPEGImages/'],  \
-    "annos":['data/VOCdevkit/VOC2007/Annotations/','data/VOCdevkit/VOC2012/Annotations/'],  \
-    "lists":['data/VOCdevkit/VOC2007/ImageSets/Main/trainval.txt','data/VOCdevkit/VOC2012/ImageSets/Main/trainval.txt'], \
-    "name" :'voc_trainval',  \
-    "lmdb" :'train-lmdb'  \
-}
+import yaml
 
-test_dataset_path =  { \
-	"imgs":['data/VOCdevkit/VOC2007/JPEGImages/'],  \
-	"annos":['data/VOCdevkit/VOC2007/Annotations/'],  \
-    "lists":['data/VOCdevkit/VOC2007/ImageSets/Main/test.txt'],  \
-    "name" :'voc_test',  \
-    "lmdb" :'test-lmdb'  \
-}
 class ImageFolderLMDB(data.Dataset):
     def __init__(self, db_path,  transform=None, phase=None):
         self.db_path = db_path
@@ -157,12 +143,15 @@ def raw_reader(path):
     return bin_data
 
 
-def folder2lmdb(path, write_frequency=5000):
-    directory = os.path.expanduser(path)
+def folder2lmdb(dataset_path, write_frequency=5000):
+    directory = os.path.expanduser(dataset_path)
     print("Loading dataset from %s" % directory)
-    dataset = ImageFolder(directory, loader=raw_reader)
 
-    #print(trainval_dataset_path['imgs'])    
+    with open(dataset_path, 'r') as stream:
+        data = yaml.load(stream)
+        trainval_dataset_path = data["trainval_dataset_path"]
+        test_dataset_path = data["test_dataset_path"]
+  
     trainval_dataset =  \
         DatasetFromFile(trainval_dataset_path['imgs'],trainval_dataset_path['annos'],trainval_dataset_path['lists'], \
         dataset_name=trainval_dataset_path['name'],phase = 'test',difficultie=False)
@@ -214,6 +203,6 @@ def folder2lmdb(path, write_frequency=5000):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--dataset", help="Path to original image dataset folder")
+    parser.add_argument("-d", "--dataset", help="Path to original image dataset folder", default = 'data/voc_data.yaml')
     args = parser.parse_args()
     folder2lmdb(args.dataset)
