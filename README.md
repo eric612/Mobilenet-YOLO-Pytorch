@@ -43,8 +43,13 @@ python train.py
 ## Acknowledgements
 
 [YOLOv3_PyTorch](https://github.com/BobLiu20/YOLOv3_PyTorch)
+
 [yolov4-tiny-pytorch](https://github.com/bubbliiiing/yolov4-tiny-pytorch)
+
 [imgaug](https://github.com/aleju/imgaug)
+
 [PyTorch-LMDB](https://github.com/rmccorm4/PyTorch-LMDB)
+
 [pytorch_image_classification](https://github.com/hysts/pytorch_image_classification)
+
 [pytorch-custom-dataset-examples](https://github.com/utkuozbulak/pytorch-custom-dataset-examples)
