@@ -9,7 +9,7 @@ import gc
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 import torchvision
-class MySigmoid(Function):
+class MSigmoid(Function):
     @staticmethod
     def forward(ctx, input):
         #ctx.save_for_backward(input)
@@ -21,6 +21,10 @@ class MySigmoid(Function):
     def backward(ctx, grad_output):
         #input, = ctx.saved_tensors
         #print(grad_output)
+        # Maximum likelihood and gradient descent demonstration
+        # https://blog.csdn.net/yanzi6969/article/details/80505421
+        # https://xmfbit.github.io/2018/03/21/cs229-supervised-learning/
+        # https://zlatankr.github.io/posts/2017/03/06/mle-gradient-descent
         grad_input = grad_output.clone()
         return grad_input
         
@@ -45,7 +49,7 @@ class YOLOLoss(nn.Module):
         self.sm_loss = nn.SmoothL1Loss()
         self.l1_loss = nn.L1Loss()
         self.bce_loss2 = nn.BCELoss()
-        self.sigmoid = MySigmoid()
+        self.sigmoid = MSigmoid()
         self.nn_sigmoid = torch.nn.Sigmoid()
         self.val_conf = val_conf
  
@@ -69,16 +73,7 @@ class YOLOLoss(nn.Module):
         loss = torch.sum(out) 
         #print(loss)
         return loss
-    '''
-    def weighted_mse_loss(self,input, target, weights):
-        out = (input - target)**2      
-        #total = torch.sum(weights)
-        out = out * weights 
-        # expand_as because weights are prob not defined for mini-batch        
-        #loss = torch.sum(out) 
-        #print(loss)
-        return out.mean()
-    '''
+
     def pre_maps(self,bs,is_cuda,anchors, in_w, in_h):
     
         FloatTensor = torch.cuda.FloatTensor if is_cuda else torch.FloatTensor
@@ -94,7 +89,7 @@ class YOLOLoss(nn.Module):
         anchor_wh = torch.cat((anchor_w,anchor_h),4)
         return grid_xy,anchor_wh
         
-    def get_target2(self, target,input, anchors, in_w, in_h, ignore_threshold):
+    def get_target(self, target,input, anchors, in_w, in_h, ignore_threshold):
     
         bs = input.size(0)
         this_anchors = np.array(anchors)[self.mask]
@@ -227,17 +222,11 @@ class YOLOLoss(nn.Module):
         #print(self.img_size)
         #print(input.shape)
         scaled_anchors = [(a_w/self.img_size[0] , a_h/self.img_size[1] ) for a_w, a_h in self.anchors]
-        
-        #scaled_anchors2 = [(scaled_anchors[self.mask[i]][:] ) for i in range(self.num_mask)]
-        #print(in_w,in_h,scaled_anchors)
+
         if targets is not None:
             #print(self.ignore_threshold)
-            #target,weights,output,recall,avg_iou,obj,no_obj,cls_score,count = self.get_target(targets,input, scaled_anchors,in_w, in_h,self.ignore_threshold)
-            target,weights,output,recall,avg_iou,obj,no_obj,cls_score,count = self.get_target2(targets,input, scaled_anchors,in_w, in_h,self.ignore_threshold)
-            #target = target.to(device)
-            #weights = weights.to(device)
+            target,weights,output,recall,avg_iou,obj,no_obj,cls_score,count = self.get_target(targets,input, scaled_anchors,in_w, in_h,self.ignore_threshold)
             loss = self.weighted_mse_loss(output , target , weights)
-            #loss = self.mse_loss(output[weights>=1] , target[weights>=1] )
           
             return loss, recall,avg_iou,obj,no_obj,cls_score,count
 
@@ -391,193 +380,5 @@ class YOLOLoss(nn.Module):
             target_cls[cls_idx] = 1
             #target_weight[cls_idx] = 1
 
-    def get_target(self, target,input, anchors, in_w, in_h, ignore_threshold):
-        bs = len(target)
-        #if bs > 0 :
-        channel = self.bbox_attrs * self.num_mask;
-        #targets = torch.zeros(bs, channel, in_h, in_w, requires_grad=False).to(device)
-        targets_weight = torch.zeros(bs, channel, in_h, in_w, requires_grad=False).to(device)
-        #no_obj_mask = torch.ones(bs, self.num_mask, in_h, in_w, requires_grad=False).to(device)
-        pred_boxes = torch.zeros(bs,self.num_mask,in_h, in_w,4, requires_grad=False).to(device)
-        #obj_mask = torch.ones(bs, self.num_mask, in_h, in_w, requires_grad=False).to(device)
-        #output = torch.zeros(bs, channel, in_h, in_w, requires_grad=False).to(device)
-        #output = input.clone()
-        pos_sum = 0
-        FloatTensor = torch.cuda.FloatTensor 
-        LongTensor = torch.cuda.LongTensor 
-        # Calculate offsets for each grid
-        grid_x = torch.linspace(0, in_w-1, in_w).repeat(in_w, 1).repeat(1, 1).to(device)
-        grid_y = torch.linspace(0, in_h-1, in_h).repeat(in_h, 1).t().repeat(1, 1).to(device)
-        ious =  list()
-        count = 0
-        recall = 0
-        no_obj = 0
-        obj = list()
-        cls_score = list()
-        #output = self.sigmoid.apply(input)
-        this_anchors = np.array(anchors)[self.mask]
-        #print('\n',this_anchors)
-        indice = torch.zeros(bs, channel, in_h, in_w, dtype=torch.bool, requires_grad=False).to(device)
-        indice2 = torch.zeros(bs, channel, in_h, in_w, dtype=torch.bool, requires_grad=False).to(device)
-        regression_mask = torch.zeros(bs, self.num_mask, in_h, in_w, dtype=torch.bool, requires_grad=False).to(device)
-        nobj_num = self.num_mask*bs*in_w*in_h
-        for i in range(self.num_mask):
-            idx = i * self.bbox_attrs
-            indice2[:,idx+4,...] = True
-            indice[:,idx:idx+2,...] = True
-        #print(max(target[:][:]))
-        #gt_iou = [0]*bs
-        for b in range(bs):
-            for t in range(len(target[b])):                               
-                gt = target[b][t].clone().detach()
-                gx = gt[1] * in_w
-                gy = gt[2] * in_h
-                gw = gt[3] 
-                gh = gt[4]
-                gi = int(gx)
-                gj = int(gy)
-                
-                #print(index)
-                anchor_shapes = torch.FloatTensor(np.concatenate((np.zeros((self.num_anchors, 2)),
-                                                  np.array(anchors)), 1)) 
-                gt_box = torch.FloatTensor([0, 0, gw, gh]).unsqueeze(0)
-                anch_ious = find_jaccard_overlap(gt_box, anchor_shapes).squeeze(0)
-                best_n = torch.argmax(anch_ious)
-                anch_ious_this = anch_ious[self.mask] 
-                iou_thresh_list = (anch_ious_this>0.213).tolist()
-                bn = self.num_anchors + 1 
-                '''
-                if best_n in self.mask :
-                    bn = self.mask.index(best_n) 
-                
-                    count+= 1
-                    index = [bn*self.bbox_attrs+y+5 for y in range(self.num_classes)] #conf,cls
-                    indice[b,index,gj,gi] = True            
-                    regression_mask[b,bn,gj,gi] = True
-                '''
-                if best_n in self.mask :
-                    bn = self.mask.index(best_n) 
-                for m in range(self.num_mask):
-                    if m == bn or iou_thresh_list[m]:                    
-                        #print(this_anchors)
-                        #bn = m
-                        count+= 1
-                        regression_mask[b,m,gj,gi] = True
-                        index = [m*self.bbox_attrs+y+5 for y in range(self.num_classes)] #conf,cls
-                        indice[b,index,gj,gi] = True
-                
-                
-        indice = torch.logical_or(indice,indice2)
-        #print(indice)
-        output = self.sigmoid.apply(input)*indice + input*(~indice)
-        no_obj = torch.sum(output[indice2]).item()
-        
-        #get preds bbox
-        for i in range(self.num_mask):
-            idx = i * self.bbox_attrs                
-            xy = (output[:,idx:idx+2,...].detach())
-            wh = torch.exp(output[:,idx+2:idx+4,...].detach())
 
-            pred_boxes[:,i,..., 0] = (xy[:,0,...]+ grid_x)/in_w
-            pred_boxes[:,i,..., 1] = (xy[:,1,...]+ grid_y)/in_h
-            pred_boxes[:,i,..., 2] = (wh[:,0,...]* this_anchors[i][0])
-            pred_boxes[:,i,..., 3] = (wh[:,1,...]* this_anchors[i][1])
-               
-
-        targets = output.clone().detach()
-        self.wh_to_x2y2(pred_boxes)
-        for b in range(bs):
-                        
-            gt_boxes = target[b][...,1:].clone().detach().to(device)
-            self.wh_to_x2y2(gt_boxes)
-            #print(gt_boxes.shape)
-            
-            
-            pred_boxes2 = pred_boxes[b].view((in_w*in_h*self.num_mask, 4))
-            pred_iou = find_jaccard_overlap(gt_boxes,pred_boxes2)
-            #print(pred_iou.shape)
-            pred_iou,_ = torch.max(pred_iou,0)
-            #print(pred_iou.shape)
-            pred_iou = pred_iou.view((self.num_mask,in_h,in_w))
-            for i in range(self.num_mask):
-                idx = i * self.bbox_attrs
-                #print('be',targets_weight[b,idx+4][5])
-                #print(pred_iou[i]>0.5)
-                #print(pred_iou[i])
-                m = pred_iou[i]<ignore_threshold
-                targets_weight[b,idx+4,m] = 1 
-                targets[b,idx+4,m] = 0 
-                #no_obj_mask[b,idx+4,pred_iou[i]<ignore_threshold] = 0
-           
-            for t in range(len(target[b])):
-                gt = target[b][t].clone().detach()
-                gx = gt[1] * in_w
-                gy = gt[2] * in_h
-                gw = gt[3] 
-                gh = gt[4]
-                gi = int(gx)
-                gj = int(gy)
-                
-                #print(index)
-                anchor_shapes = torch.FloatTensor(np.concatenate((np.zeros((self.num_anchors, 2)),
-                                                  np.array(anchors)), 1)) 
-                gt_box = torch.FloatTensor([0, 0, gw, gh]).unsqueeze(0)
-                anch_ious = find_jaccard_overlap(gt_box, anchor_shapes).squeeze(0)
-                best_n = torch.argmax(anch_ious)
-                anch_ious_this = anch_ious[self.mask] 
-                iou_thresh_list = (anch_ious_this>0.213).tolist()
-                bn = self.num_anchors + 1   
-                gt_box_xy = gt_boxes[t].unsqueeze(0)
-                if best_n in self.mask :
-                    bn = self.mask.index(best_n)                 
-                for m in range(self.num_mask):
-                    if m == bn or iou_thresh_list[m]:                    
-                        #print(this_anchors)
-                        #bn = m
-                        #count+= 1                                          
-                        index = m*self.bbox_attrs                
-                        pred = pred_boxes[b,m,gj,gi,...].unsqueeze(0)
-
-                        #iou = find_jaccard_overlap(gt_box_xy, pred)
-
-                        inp = output[b, index:index+4, gj, gi].clone().detach()
-                        outp = targets[b, index:index+4, gj, gi].clone().detach()
-                        accumulate = targets_weight[b, index+4, gj, gi]
-                        targets[b, index:index+4, gj, gi],targets_weight[b, index:(index+4), gj, gi],iou = self.IOU_Loss(gt_box_xy,pred,inp,outp,accumulate)
-                        #targets[b, index:index+4, gj, gi],targets_weight[b, index:(index+4), gj, gi],iou = self.DenseBoxLoss(gt_box_xy,pred,gi,gj,this_anchors[m],in_w,in_h)
-                        if iou>0:
-                            ious.append(iou.item())
-                        else :
-                            ious.append(0)
-                        if iou>ignore_threshold :
-                            recall = recall + 1                            
-                        # object
-                        targets[b, index+4, gj, gi] = 1
-                        targets_weight[b, index+4, gj, gi] = 1
-                        no_obj = no_obj - output[b,index+4,gj,gi].item()
-                        obj.append(output[b,index+4,gj,gi].item())
-                        
-                        cls_index = int(target[b][t][0].item())-1
-                        cls_tensor = targets[b, index+5:index+self.bbox_attrs, gj, gi]
-                        cls_weight = targets_weight[b, index+5:index+self.bbox_attrs, gj, gi]
-                        self.class_loss(cls_tensor,cls_weight,cls_index)
-                        cls_score.append(output[b, cls_index+5+index, gj, gi].item())
-
-                    
-                    
-                    #targets_weight[b, index+4:index+self.bbox_attrs, gj, gi] = 1
-        nobj_num = nobj_num - count
-        no_obj = no_obj/nobj_num
-
-        if count>0:
-            avg_iou = sum(ious)/count;
-            recall = recall/count
-            obj_avg = sum(obj) / len(obj) 
-            cls_avg = sum(cls_score) / len(cls_score)           
-        else:
-            avg_iou = recall = 0.5
-            obj_avg = cls_avg = 0.5
-            
-
-        return targets,targets_weight,output,recall,avg_iou,obj_avg,no_obj,cls_avg,count/bs
 
