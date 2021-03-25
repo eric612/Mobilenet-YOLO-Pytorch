@@ -39,31 +39,10 @@ class YOLOLoss(nn.Module):
         self.bbox_attrs = 5 + num_classes
         self.img_size = img_size
         self.ignore_threshold = ignore_threshold
-        self.lambda_xy = 2.5
-        self.lambda_wh = 2.5
-        self.lambda_conf = 1.0
-        self.lambda_cls = 1.0
-
-        self.mse_loss = nn.MSELoss()
-        self.bce_loss = nn.BCELoss()
-        self.sm_loss = nn.SmoothL1Loss()
-        self.l1_loss = nn.L1Loss()
-        self.bce_loss2 = nn.BCELoss()
         self.sigmoid = MSigmoid()
         self.nn_sigmoid = torch.nn.Sigmoid()
         self.val_conf = val_conf
  
-    #def sigmoid(self, z):
-    #    return 1/(1+np.exp(-z))     
-      
-    def weighted_l1_loss(self,input, target, weights):
-        out = (input - target)      
-        total = torch.sum(weights)
-        out = out * weights 
-        # expand_as because weights are prob not defined for mini-batch        
-        loss = torch.sum(abs(out)/total) 
-        #print(loss)
-        return loss
     
     def weighted_mse_loss(self,input, target, weights):
         out = (input - target)**2      
@@ -168,8 +147,8 @@ class YOLOLoss(nn.Module):
                     #print(pred,gt_box_xy)
                     inp = output[b, k, gj, gi,:4].clone().detach()
                     outp = targets[b, k, gj, gi,:4].clone().detach()
-                    targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.IOU_Loss(gt_box_xy,pred,inp,outp,accumulate)
-                    #targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.DenseBoxLoss(gt_box_xy,pred,gi,gj,this_anchors[m],in_w,in_h)
+                    #targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.IOU_Loss(gt_box_xy,pred,inp,outp,accumulate)
+                    targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.DenseBoxLoss(gt_box_xy,pred,gi,gj,this_anchors[k],in_w,in_h)
                     if iou>ignore_threshold :
                         recall = recall + 1                         
                     ious = ious + iou.item()
