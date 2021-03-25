@@ -324,7 +324,7 @@ def test(test_loader, model, optimizer,epoch , config):
     model.yolo_losses[1].val_conf = adjust_confidence(gt_box,pred_box,model.yolo_losses[1].val_conf)
     
     # Calculate mAP
-    APs, mAP, TP, FP = calculate_mAP_Elan_od(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, n_classes=21)
+    APs, mAP, TP, FP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, n_classes=21)
     pp.pprint(APs)
     print('\nMean Average Precision (mAP): %.3f' % mAP)
     return mAP
