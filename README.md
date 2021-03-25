@@ -26,7 +26,7 @@ sh scripts/VOC2012.sh
  ```
  sh scripts/create.sh 
  ``` 
-3. 
+3. Start training
 ```
 python train.py
 ```  
