@@ -10,7 +10,7 @@ CLASSES = ('__background__',
 classes_map = {k: v  for v, k in enumerate(CLASSES)}
 #classes_map['background'] = 0
 od_classes_map = {v: k for k, v in classes_map.items()}  # Inverse mapping
-def calculate_mAP_Elan_od(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, n_classes = 21):
+def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, n_classes = 21):
     """
     Calculate the Mean Average Precision (mAP) of detected objects.
     See https://medium.com/@jonathan_hui/map-mean-average-precision-for-object-detection-45c121a31173 for an explanation
