@@ -188,7 +188,7 @@ class Image_Augmentation():
 
         return new_image
 
-    def transform_od(self,image, boxes, labels, difficulties, dims, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = 'train'):
+    def transform_od(self,image, boxes, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = 'train'):
         """
         Apply the transformations above.
 
