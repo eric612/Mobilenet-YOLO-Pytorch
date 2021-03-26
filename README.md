@@ -10,7 +10,7 @@ A caffe implementation of MobileNet-YOLO detection network , train on 07+12 , te
 
 Network|mAP|Resolution|yolov3|yolov4|
 :---:|:---:|:---:|:---:|:---:|
-MobileNetV2|70.x|352|✓| |
+MobileNetV2|71.x|352|✓| |
 MobileNetV2| |352| |✓|
 MobileNetV3| | | | |
 MobileNetV3| | | | |
@@ -24,11 +24,11 @@ sh scripts/VOC2012.sh
 ``` 
 2. Create lmdb
  ```
-sh scripts/create.sh 
+ sh scripts/create.sh 
  ``` 
 3. Start training
 ```
-sh scripts/train.sh 
+python train.py
 ```  
 
 ## Under construction
