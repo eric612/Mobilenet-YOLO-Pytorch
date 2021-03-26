@@ -6,7 +6,7 @@ The first version will be a pure yolov3 model like my previous project [Mobilene
 
 ## Model
 
-A caffe implementation of MobileNet-YOLO detection network , train on 07+12 , test on VOC2007 (imagenet pretrained , not coco)
+A pytorch implementation of MobileNet-YOLO detection network , train on 07+12 , test on VOC2007 (imagenet pretrained , not coco)
 
 Network|mAP|Resolution|yolov3|yolov4|
 :---:|:---:|:---:|:---:|:---:|
