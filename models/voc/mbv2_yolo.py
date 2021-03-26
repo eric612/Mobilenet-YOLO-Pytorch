@@ -53,7 +53,7 @@ class Upsample(nn.Module):
     def forward(self, x,):
         x = self.upsample(x)
         return x
-def DepwiseConvolution(in_filters,out_filters):
+def DepthwiseConvolution(in_filters,out_filters):
     m = nn.Sequential(
         BasicConv(in_filters, in_filters, 3,depthwise=True),
         BasicConv(in_filters, in_filters, 1),
@@ -97,7 +97,7 @@ class yolo(nn.Module):
         
         
         self.upsample = Upsample(512,256)
-        self.conv_for_S16 = DepwiseConvolution(96,256)
+        self.conv_for_S16 = DepthwiseConvolution(96,256)
         self.connect_for_S16 = Connect(256)
         self.yolo_headS16 = yolo_head([512, self.num_anchors * (5 + self.num_classes)],256)
 

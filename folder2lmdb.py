@@ -75,7 +75,8 @@ class ImageFolderLMDB(data.Dataset):
         #for cls,x,y,w,h in target:
         #cls = target
         image = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)) 
-        new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, (352,352), mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = self.phase)
+        
+        new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = self.phase)
 
         old_dims = torch.FloatTensor([new_img.width, new_img.height, new_img.width, new_img.height]).unsqueeze(0)
         new_boxes2 = new_boxes / old_dims  # percent coordinates

@@ -10,7 +10,7 @@ A caffe implementation of MobileNet-YOLO detection network , train on 07+12 , te
 
 Network|mAP|Resolution|yolov3|yolov4|
 :---:|:---:|:---:|:---:|:---:|
-MobileNetV2|71.x|352|✓| |
+MobileNetV2|71.2|352|✓| |
 MobileNetV2| |352| |✓|
 MobileNetV3| | | | |
 MobileNetV3| | | | |
@@ -28,8 +28,15 @@ sh scripts/VOC2012.sh
  ``` 
 3. Start training
 ```
-python train.py
+sh scripts/train.sh 
 ```  
+## Demo
+
+Download [checkpoint](https://drive.google.com/file/d/1PPfmv5aHz014jBiKiH2hL-YAQDOrm2hx/view?usp=sharing) , and save at $Mobilenet-YOLO-Pytorch/checkpoint/
+
+```
+sh scripts/inference.sh 
+``` 
 
 ## Under construction
 
@@ -42,14 +49,18 @@ python train.py
 
 ## Acknowledgements
 
-[YOLOv3_PyTorch](https://github.com/BobLiu20/YOLOv3_PyTorch)
+[AlexeyAB](https://github.com/AlexeyAB/darknet)
 
-[yolov4-tiny-pytorch](https://github.com/bubbliiiing/yolov4-tiny-pytorch)
+[diggerdu](https://github.com/diggerdu/Generalized-Intersection-over-Union)
 
-[imgaug](https://github.com/aleju/imgaug)
+[BobLiu20](https://github.com/BobLiu20/YOLOv3_PyTorch)
 
-[PyTorch-LMDB](https://github.com/rmccorm4/PyTorch-LMDB)
+[bubbliiiing](https://github.com/bubbliiiing/yolov4-tiny-pytorch)
 
-[pytorch_image_classification](https://github.com/hysts/pytorch_image_classification)
+[aleju](https://github.com/aleju/imgaug)
 
-[pytorch-custom-dataset-examples](https://github.com/utkuozbulak/pytorch-custom-dataset-examples)
+[rmccorm4](https://github.com/rmccorm4/PyTorch-LMDB)
+
+[hysts](https://github.com/hysts/pytorch_image_classification)
+
+[utkuozbulak](https://github.com/utkuozbulak/pytorch-custom-dataset-examples)
