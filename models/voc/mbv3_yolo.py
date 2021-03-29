@@ -86,8 +86,8 @@ class yolo(nn.Module):
         self.num_classes = config["yolo"]["num_classes"]
         self.num_anchors = config["yolo"]["num_anchors"]
         #  backbone
-        model_url = 'https://raw.githubusercontent.com/d-li14/mobilenetv2.pytorch/master/pretrained/mobilenetv2-c5e733a8.pth'
-        self.backbone = MobileNetV3(model_url)
+        # https://drive.google.com/file/d/1HYPqCM1t8GDj9HnImKitM-QqdR8InxGB/view?usp=sharing
+        self.backbone = MobileNetV3('mbv3_large.old.pth.tar')
 
         self.conv_for_S32 = BasicConv(960,512,1)
         #print(num_anchors * (5 + num_classes))
