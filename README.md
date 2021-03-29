@@ -43,7 +43,7 @@ sh scripts/inference.sh
 - [ ] Multi-Task 
 - [ ] Hyper Parameter Tuning
 - [ ] Prning 
-- [ ] Porting (KL520 , ncnn , ...)
+- [ ] Porting (KL520 , ncnn , caffe , ...)
 
 ## Acknowledgements
 
