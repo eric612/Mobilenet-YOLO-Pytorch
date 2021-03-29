@@ -95,6 +95,10 @@ class YOLOLoss(nn.Module):
         targets_parts = targets[...,4] 
         anchor_shapes = torch.FloatTensor(np.concatenate((np.zeros((self.num_anchors, 2)),np.array(anchors)), 1))         
         for b in range(bs):
+            if len(target[b]) == 0 :
+                targets_weight_parts[b,...,4] = 1
+                targets_parts[b,...,4] = 0
+                continue
             gt_boxes = target[b][...,1:].clone().detach().to(device)
             self.wh_to_x2y2(gt_boxes)   
             
@@ -331,7 +335,7 @@ class YOLOLoss(nn.Module):
         #print(p_dt,p_db,p_dl,p_dr)
         #else :
         #    tx,ty,tw,th,_ = self.DenseBoxLoss(gt_box,pred_box,grid_x,grid_y,anchors,in_w,in_h)
-        target = torch.Tensor([tx,ty,tw,th])
+        target = torch.Tensor([tx,ty,tw,th]).to(device)
         return target,(2.0-Xhat),I/U
         
     def DenseBoxLoss(self,gt_box,pred_box,grid_x,grid_y,anchors,in_w,in_h):
@@ -345,7 +349,7 @@ class YOLOLoss(nn.Module):
         th = torch.log(h/anchors[1])
         #giou = self.box_giou(gt_box,pred_box)
         weight = 2.0 - (w*h)
-        target = torch.Tensor([tx,ty,tw,th])
+        target = torch.Tensor([tx,ty,tw,th]).to(device)
         iou = find_jaccard_overlap(gt_box, pred_box)
         return target,weight,iou
     def class_loss(self,target_cls,target_weight,cls_idx):
