@@ -12,8 +12,8 @@ Network|mAP|Resolution|yolov3|yolov4|checkpoint|
 :---:|:---:|:---:|:---:|:---:|:---:|
 MobileNetV2|71.2|352|✓| |[checkpoint](https://drive.google.com/file/d/1PPfmv5aHz014jBiKiH2hL-YAQDOrm2hx/view?usp=sharing)|
 MobileNetV2| |352| |✓| |
-MobileNetV3|71.5|352|✓| | |[checkpoint](https://drive.google.com/file/d/18bq-em_xk4SMoM3eMnMmaHTOCuAPKhwp/view?usp=sharing)
-MobileNetV3| | | | | |
+MobileNetV3|71.5|352|✓| |[checkpoint](https://drive.google.com/file/d/18bq-em_xk4SMoM3eMnMmaHTOCuAPKhwp/view?usp=sharing)|
+MobileNetV3| |352| |✓| |
 
 ## Training steps
 
