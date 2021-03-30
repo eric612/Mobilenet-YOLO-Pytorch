@@ -38,7 +38,7 @@ parser.add_argument('--warm-up', '--warmup',  default=[], type=float,
                     metavar='warmup', help='warm up learning rate')                    
 parser.add_argument('--epochs', default=300, type=int, metavar='N',
                     help='number of total epochs to run')
-parser.add_argument('--schedule', type=int, nargs='+', default=[125,200,275],
+parser.add_argument('--schedule', type=int, nargs='+', default=[125,200,250],
                         help='Decrease learning rate at these epochs.')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
