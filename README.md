@@ -2,6 +2,8 @@
 
 Like my previous project [Mobilenet-YOLO](https://github.com/eric612/MobileNet-YOLO) , the loss function was very simular to original implemention of darknet
 
+![training process](/images/show.gif)
+
 ## Model
 
 A pytorch implementation of MobileNet-YOLO detection network , train on 07+12 , test on VOC2007 (imagenet pretrained , not coco)
