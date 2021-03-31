@@ -74,7 +74,7 @@ class YOLOLoss(nn.Module):
         this_anchors = np.array(anchors)[self.mask]
         FloatTensor = torch.cuda.FloatTensor if input.is_cuda else torch.FloatTensor
         targets_weight = torch.zeros(bs, self.num_mask, in_h, in_w,self.num_classes+1, requires_grad=False).to(device)
-        pred_boxes = torch.zeros(bs,self.num_mask,in_h, in_w,0, requires_grad=True).to(device)
+        pred_boxes = torch.zeros(bs,self.num_mask,in_h, in_w,0, requires_grad=False).to(device)
         prediction = input.view(bs,  self.num_mask,self.bbox_attrs, in_h, in_w).permute(0, 1, 3, 4, 2).contiguous() 
         xy = self.sigmoid.apply(prediction[..., 0:2]) 
         wh = torch.exp(prediction[..., 2:4]) 
@@ -97,10 +97,10 @@ class YOLOLoss(nn.Module):
         iou_loss = torch.FloatTensor(0).to(device)
         iou_weight = torch.FloatTensor(0).to(device)
         for b in range(bs):
-            if len(target[b]) == 0 :
-                targets_weight_parts[b] = 1
-                targets_parts[b] = 0
-                continue
+            #if len(target[b]) == 0 :
+            #    targets_weight_parts[b] = 1
+            #    targets_parts[b] = 0
+            #    continue
             gt_boxes = target[b][...,1:].clone().detach().to(device)
             self.wh_to_x2y2(gt_boxes)   
             
@@ -222,9 +222,13 @@ class YOLOLoss(nn.Module):
             iou_target = torch.zeros_like(iou_losses)
             #iou_loss= torch.sum(iou_target-iou_losses)
             iou_loss = self.weighted_mse_loss(iou_losses,iou_target,iou_weights)/iou_losses.numel()
+            #iou_loss = self.mse_loss(iou_losses,iou_target)/iou_losses.numel()
             #print(iou_loss)
-            loss = loss + iou_loss
-            return loss, recall,avg_iou,obj,no_obj,cls_score,count
+            #iou_loss = torch.Tensor(iou_loss)
+            #print(loss,iou_loss)
+            #loss = torch.cat((loss.unsqueeze(0) ,iou_loss.unsqueeze(0)))
+            loss = loss + iou_loss*0.01
+            return loss, recall,avg_iou,obj,no_obj,cls_score,count 
 
         else:
             preds = self.get_pred_boxes(input, scaled_anchors,in_w, in_h)
