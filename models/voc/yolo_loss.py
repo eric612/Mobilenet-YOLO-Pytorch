@@ -95,10 +95,6 @@ class YOLOLoss(nn.Module):
         targets_parts = targets[...,4] 
         anchor_shapes = torch.FloatTensor(np.concatenate((np.zeros((self.num_anchors, 2)),np.array(anchors)), 1))         
         for b in range(bs):
-            if len(target[b]) == 0 :
-                targets_weight_parts[b,...,4] = 1
-                targets_parts[b,...,4] = 0
-                continue
             gt_boxes = target[b][...,1:].clone().detach().to(device)
             self.wh_to_x2y2(gt_boxes)   
             
