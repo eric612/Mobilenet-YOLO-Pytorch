@@ -42,7 +42,9 @@ class YOLOLoss(nn.Module):
         self.sigmoid = MSigmoid()
         self.nn_sigmoid = torch.nn.Sigmoid()
         self.val_conf = val_conf
- 
+        self.mse_loss = nn.MSELoss()
+        self.bce_loss = nn.BCELoss()
+        self.label_smooth_eps = 0.1
     
     def weighted_mse_loss(self,input, target, weights):
         out = (input - target)**2      
@@ -97,10 +99,10 @@ class YOLOLoss(nn.Module):
         iou_loss = torch.FloatTensor(0).to(device)
         iou_weight = torch.FloatTensor(0).to(device)
         for b in range(bs):
-            #if len(target[b]) == 0 :
-            #    targets_weight_parts[b] = 1
-            #    targets_parts[b] = 0
-            #    continue
+            if len(target[b]) == 0 :
+                targets_weight_parts[b] = 1
+                targets_parts[b] = 0
+                continue
             gt_boxes = target[b][...,1:].clone().detach().to(device)
             self.wh_to_x2y2(gt_boxes)   
             
@@ -131,44 +133,44 @@ class YOLOLoss(nn.Module):
                 gt_box = torch.FloatTensor([0, 0, gw, gh]).unsqueeze(0)
                 anch_ious = find_jaccard_overlap(gt_box, anchor_shapes).squeeze(0)
                 best_n = torch.argmax(anch_ious)
-                #anch_ious_this = anch_ious[self.mask] 
-                #iou_thresh_list = (anch_ious_this>0.213).tolist()
-                #bn = self.num_anchors + 1 
+                anch_ious_this = anch_ious[self.mask] 
+                iou_thresh_list = (anch_ious_this>0.4).tolist()
+                bn = self.num_anchors + 1 
                 if best_n in self.mask :
                     bn = self.mask.index(best_n)  
-                    k = bn 
-                #for k in range(self.num_mask):
-                    #if k == bn or iou_thresh_list[k] :
-                    count+= 1                
-                    cls_index = int(target[b][t][0].item())-1
-                    
-                    #accumulate = targets_weight[b, k, gj, gi,0]
-                    targets_parts[b,k,gj,gi] = 1 
-                    targets_weight_parts[b,k,gj,gi] = 1 
-                    conf = output[b,k,gj,gi,0].item()
-                    obj = obj + conf
-                    no_obj = no_obj - conf
-                    gt_box_xy = gt_boxes[t].unsqueeze(0)
-                    pred = pred_boxes[b, k, gj, gi].unsqueeze(0)
-                    #print(pred,gt_box_xy)
-                    #inp = output[b, k, gj, gi,:4].clone().detach()
-                    #outp = targets[b, k, gj, gi,:4].clone().detach()
-                    giou,iou = self.box_giou(gt_box_xy,pred)
-                    
-                    #print(giou)
-                    iou_loss = torch.cat((iou_loss,(1. - giou).to(device)))
-                    area = 2.0 - self.get_area(gt_box_xy)
-                    
-                    iou_weight = torch.cat((iou_weight,(area).to(device)))
-                    #targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.IOU_Loss(gt_box_xy,pred,inp,outp,accumulate)
-                    #targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.DenseBoxLoss(gt_box_xy,pred,gi,gj,this_anchors[k],in_w,in_h)
-                    if iou>ignore_threshold :
-                        recall = recall + 1                         
-                    ious = ious + iou.item()
-                    cls_tensor = targets[b, k, gj, gi,1:]
-                    cls_weight = targets_weight[b, k, gj, gi,1:]
-                    self.class_loss(cls_tensor,cls_weight,cls_index)
-                    cls_score = cls_score + output[b,k,gj,gi,1+cls_index].item()
+                    #k = bn 
+                for k in range(self.num_mask):
+                    if k == bn or iou_thresh_list[k] :
+                        count+= 1                
+                        cls_index = int(target[b][t][0].item())-1
+                        
+                        #accumulate = targets_weight[b, k, gj, gi,0]
+                        targets_parts[b,k,gj,gi] = 1 
+                        targets_weight_parts[b,k,gj,gi] = 1 
+                        conf = output[b,k,gj,gi,0].item()
+                        obj = obj + conf
+                        no_obj = no_obj - conf
+                        gt_box_xy = gt_boxes[t].unsqueeze(0)
+                        pred = pred_boxes[b, k, gj, gi].unsqueeze(0)
+                        #print(pred,gt_box_xy)
+                        #inp = output[b, k, gj, gi,:4].clone().detach()
+                        #outp = targets[b, k, gj, gi,:4].clone().detach()
+                        giou,iou = self.box_ciou(gt_box_xy,pred)
+                        
+                        #print(giou)
+                        iou_loss = torch.cat((iou_loss,(1. - giou).to(device)))
+                        area = 2.0 - self.get_area(gt_box_xy)
+                        
+                        iou_weight = torch.cat((iou_weight,(area).to(device)))
+                        #targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.IOU_Loss(gt_box_xy,pred,inp,outp,accumulate)
+                        #targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.DenseBoxLoss(gt_box_xy,pred,gi,gj,this_anchors[k],in_w,in_h)
+                        if iou>ignore_threshold :
+                            recall = recall + 1                         
+                        ious = ious + iou.item()
+                        cls_tensor = targets[b, k, gj, gi,1:]
+                        cls_weight = targets_weight[b, k, gj, gi,1:]
+                        self.class_loss(cls_tensor,cls_weight,cls_index)
+                        cls_score = cls_score + output[b,k,gj,gi,1+cls_index].item()
         if count > 0:                
             obj_avg =  obj/count 
             cls_avg =  cls_score/count
@@ -249,7 +251,29 @@ class YOLOLoss(nn.Module):
         #print(t.shape)
         box_c = torch.cat((l,t,r,b),1)
         return box_c
-    
+    def box_ciou(self,box1,box2):
+        box_c = self.box_c(box1,box2)
+        c = self.get_area(box_c)       
+        iou = find_jaccard_overlap(box1, box2)
+
+        w1,h1 = box1[...,2] - box1[...,0],box1[...,3] - box1[...,1]
+        w2,h2 = box2[...,2] - box2[...,0],box2[...,3] - box2[...,1]
+        x1,y1 = (box1[...,2] + box1[...,0])/2,(box1[...,1] + box1[...,3])/2
+        x2,y2 = (box2[...,2] + box2[...,0])/2,(box2[...,1] + box2[...,3])/2
+        u = (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
+        if c==0 :
+            ciou_term = iou
+        else :
+            d = u/c
+            ar_gt  = w2/h2
+            ar_pred  = w1/h1
+            ar_loss = 4 / (math.pi * math.pi) * (torch.atan(ar_gt) - torch.atan(ar_pred)) * (torch.atan(ar_gt) - torch.atan(ar_pred));
+            alpha = ar_loss / (1 - iou + ar_loss + 0.000001);
+            ciou_term = d + alpha * ar_loss;
+        #print(iou,iou-giou_term)
+        #print(c,u)
+        return iou-ciou_term,iou
+   
     def box_giou(self,box1,box2):
         box_c = self.box_c(box1,box2)
         c = self.get_area(box_c)
@@ -267,7 +291,9 @@ class YOLOLoss(nn.Module):
         #print(c,u)
         return iou-giou_term,iou
     def get_area(self,box):
-        return (box[...,2] - box[...,0]) * (box[...,3] - box[...,1])        
+        return (box[...,2] - box[...,0]) * (box[...,3] - box[...,1])   
+    def get_aspect_ratio(self,box):
+        return (box[...,2] - box[...,0]) / (box[...,3] - box[...,1])           
     def IOU_Loss(self,gt_box,pred_box,input,output,accumulate):
  
         X = self.get_area(pred_box)
@@ -372,14 +398,15 @@ class YOLOLoss(nn.Module):
         iou = find_jaccard_overlap(gt_box, pred_box)
         return target,weight,iou
     def class_loss(self,target_cls,target_weight,cls_idx):
-        
+        y_true = (1 - self.label_smooth_eps) + 0.5*self.label_smooth_eps;
+        y_false = 0.5*self.label_smooth_eps;
         if target_weight[cls_idx]:
-            target_cls[cls_idx] = 1
+            target_cls[cls_idx] = y_true
             target_weight[cls_idx] = 1                       
         else :
-            target_cls[0:self.num_classes] = 0
+            target_cls[0:self.num_classes] = y_false
             target_weight[0:self.num_classes] = 1
-            target_cls[cls_idx] = 1
+            target_cls[cls_idx] = y_true
             #target_weight[cls_idx] = 1
 
 
