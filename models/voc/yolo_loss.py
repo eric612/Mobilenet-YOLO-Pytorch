@@ -73,12 +73,12 @@ class YOLOLoss(nn.Module):
         bs = input.size(0)
         this_anchors = np.array(anchors)[self.mask]
         FloatTensor = torch.cuda.FloatTensor if input.is_cuda else torch.FloatTensor
-        targets_weight = torch.zeros(bs, self.num_mask, in_h, in_w,self.bbox_attrs, requires_grad=False).to(device)
-        pred_boxes = torch.zeros(bs,self.num_mask,in_h, in_w,0, requires_grad=False).to(device)
+        targets_weight = torch.zeros(bs, self.num_mask, in_h, in_w,self.num_classes+1, requires_grad=False).to(device)
+        pred_boxes = torch.zeros(bs,self.num_mask,in_h, in_w,0, requires_grad=True).to(device)
         prediction = input.view(bs,  self.num_mask,self.bbox_attrs, in_h, in_w).permute(0, 1, 3, 4, 2).contiguous() 
         xy = self.sigmoid.apply(prediction[..., 0:2]) 
-        wh = torch.exp(prediction[..., 2:4].clone().detach()) 
-        conf_cls = self.sigmoid.apply(prediction[..., 4:])
+        wh = torch.exp(prediction[..., 2:4]) 
+        output = self.sigmoid.apply(prediction[..., 4:])
 
         grid_xy,anchor_wh = self.pre_maps(bs,input.is_cuda,anchors, in_w, in_h)
         pred_boxes = torch.cat((pred_boxes,(xy + grid_xy)/FloatTensor([in_w,in_h])),4)
@@ -87,17 +87,19 @@ class YOLOLoss(nn.Module):
         
 
         count = recall = ious = obj = cls_score = 0
-        output = torch.cat((xy,prediction[..., 2:4],conf_cls),4).to(device)
+        #output = torch.cat((xy,prediction[..., 2:4],conf_cls),4).to(device)
         targets = output.clone().to(device)
-        no_obj = torch.sum(output[...,4])
-        no_cnt = output[...,4].numel()
-        targets_weight_parts = targets_weight[...,4]  
-        targets_parts = targets[...,4] 
-        anchor_shapes = torch.FloatTensor(np.concatenate((np.zeros((self.num_anchors, 2)),np.array(anchors)), 1))         
+        no_obj = torch.sum(output[...,0])
+        no_cnt = output[...,0].numel()
+        targets_weight_parts = targets_weight[...,0]  
+        targets_parts = targets[...,0] 
+        anchor_shapes = torch.FloatTensor(np.concatenate((np.zeros((self.num_anchors, 2)),np.array(anchors)), 1)) 
+        iou_loss = torch.FloatTensor(0).to(device)
+        iou_weight = torch.FloatTensor(0).to(device)
         for b in range(bs):
             if len(target[b]) == 0 :
-                targets_weight_parts[b,...,4] = 1
-                targets_parts[b,...,4] = 0
+                targets_weight_parts[b] = 1
+                targets_parts[b] = 0
                 continue
             gt_boxes = target[b][...,1:].clone().detach().to(device)
             self.wh_to_x2y2(gt_boxes)   
@@ -140,26 +142,33 @@ class YOLOLoss(nn.Module):
                     count+= 1                
                     cls_index = int(target[b][t][0].item())-1
                     
-                    accumulate = targets_parts[b,k,gj,gi]
+                    #accumulate = targets_weight[b, k, gj, gi,0]
                     targets_parts[b,k,gj,gi] = 1 
                     targets_weight_parts[b,k,gj,gi] = 1 
-                    conf = output[b,k,gj,gi,4].item()
+                    conf = output[b,k,gj,gi,0].item()
                     obj = obj + conf
                     no_obj = no_obj - conf
                     gt_box_xy = gt_boxes[t].unsqueeze(0)
                     pred = pred_boxes[b, k, gj, gi].unsqueeze(0)
                     #print(pred,gt_box_xy)
-                    inp = output[b, k, gj, gi,:4].clone().detach()
-                    outp = targets[b, k, gj, gi,:4].clone().detach()
+                    #inp = output[b, k, gj, gi,:4].clone().detach()
+                    #outp = targets[b, k, gj, gi,:4].clone().detach()
+                    giou,iou = self.box_giou(gt_box_xy,pred)
+                    
+                    #print(giou)
+                    iou_loss = torch.cat((iou_loss,(1. - giou).to(device)))
+                    area = 2.0 - self.get_area(gt_box_xy)
+                    
+                    iou_weight = torch.cat((iou_weight,(area).to(device)))
                     #targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.IOU_Loss(gt_box_xy,pred,inp,outp,accumulate)
-                    targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.DenseBoxLoss(gt_box_xy,pred,gi,gj,this_anchors[k],in_w,in_h)
+                    #targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.DenseBoxLoss(gt_box_xy,pred,gi,gj,this_anchors[k],in_w,in_h)
                     if iou>ignore_threshold :
                         recall = recall + 1                         
                     ious = ious + iou.item()
-                    cls_tensor = targets[b, k, gj, gi,5:]
-                    cls_weight = targets_weight[b, k, gj, gi,5:]
+                    cls_tensor = targets[b, k, gj, gi,1:]
+                    cls_weight = targets_weight[b, k, gj, gi,1:]
                     self.class_loss(cls_tensor,cls_weight,cls_index)
-                    cls_score = cls_score + output[b,k,gj,gi,5+cls_index].item()
+                    cls_score = cls_score + output[b,k,gj,gi,1+cls_index].item()
         if count > 0:                
             obj_avg =  obj/count 
             cls_avg =  cls_score/count
@@ -168,7 +177,7 @@ class YOLOLoss(nn.Module):
             recall = recall/count
         else :
             recall = obj_avg = cls_avg = no_obj = avg_iou = 0
-        return targets,targets_weight,output,recall,avg_iou,obj_avg,no_obj,cls_avg,count/bs
+        return targets,targets_weight,output,recall,avg_iou,obj_avg,no_obj,cls_avg,count/bs,iou_loss,iou_weight
         
     def get_pred_boxes(self,input, anchors, in_w, in_h):
     
@@ -208,9 +217,13 @@ class YOLOLoss(nn.Module):
 
         if targets is not None:
             #print(self.ignore_threshold)
-            target,weights,output,recall,avg_iou,obj,no_obj,cls_score,count = self.get_target(targets,input, scaled_anchors,in_w, in_h,self.ignore_threshold)
+            target,weights,output,recall,avg_iou,obj,no_obj,cls_score,count,iou_losses,iou_weights = self.get_target(targets,input, scaled_anchors,in_w, in_h,self.ignore_threshold)
             loss = self.weighted_mse_loss(output , target , weights)
-          
+            iou_target = torch.zeros_like(iou_losses)
+            #iou_loss= torch.sum(iou_target-iou_losses)
+            iou_loss = self.weighted_mse_loss(iou_losses,iou_target,iou_weights)/iou_losses.numel()
+            #print(iou_loss)
+            loss = loss + iou_loss
             return loss, recall,avg_iou,obj,no_obj,cls_score,count
 
         else:
@@ -235,18 +248,20 @@ class YOLOLoss(nn.Module):
     
     def box_giou(self,box1,box2):
         box_c = self.box_c(box1,box2)
+        c = self.get_area(box_c)
         
-        w = box_c[...,2] - box_c[...,0]
-        h = box_c[...,3] - box_c[...,1]
-        c = w*h;
-        
-        iou = find_jaccard_overlap(box1, box2)
+        #iou = find_jaccard_overlap(box1, box2)
         u = find_union(box1,box2)
+        i = find_intersection(box1,box2)
+        iou = i/u
         #giou_term = [iou if (k1 == 0)  else (k1 - k2)/k1 for k1,k2 in zip(c, u)]
-        giou_term = (c-u)/c
+        if c==0 :
+            giou_term = iou
+        else :
+            giou_term = (c-u)/c
         #print(iou,iou-giou_term)
         #print(c,u)
-        return iou-giou_term;
+        return iou-giou_term,iou
     def get_area(self,box):
         return (box[...,2] - box[...,0]) * (box[...,3] - box[...,1])        
     def IOU_Loss(self,gt_box,pred_box,input,output,accumulate):
@@ -262,7 +277,7 @@ class YOLOLoss(nn.Module):
         I = Iw*Ih # intersection area
         #print(Iw,Ih,I)
         
-        m = I > 0
+        #m = I > 0
         #if m == False:
         #    print(Iw,Ih,I)
         U = X + Xhat - I; # Union area
@@ -320,15 +335,15 @@ class YOLOLoss(nn.Module):
         #tx,ty,tw,th,_ = self.DenseBoxLoss(gt_box,pred_box,grid_x,grid_y,anchors,in_w,in_h)
         #print(output[...,0]-tx,delta_x)
         if accumulate:
-            tx = (output[...,0] + delta_x*0.25).item()
-            ty = (output[...,1] + delta_y*0.25).item()
-            tw = (output[...,2] + delta_w*0.25*torch.exp(input[...,2])).item()
-            th = (output[...,3] + delta_h*0.25*torch.exp(input[...,3])).item()        
+            tx = (output[...,0] + delta_x*0.5).item()
+            ty = (output[...,1] + delta_y*0.5).item()
+            tw = (output[...,2] + (delta_w*torch.exp(input[...,2]))*0.5).item()
+            th = (output[...,3] + (delta_h*torch.exp(input[...,3]))*0.5).item()        
         else :
-            tx = (input[...,0] + delta_x*0.25).item()
-            ty = (input[...,1] + delta_y*0.25).item()
-            tw = (input[...,2] + delta_w*0.25*torch.exp(input[...,2])).item()
-            th = (input[...,3] + delta_h*0.25*torch.exp(input[...,3])).item()
+            tx = (input[...,0] + delta_x*0.5).item()
+            ty = (input[...,1] + delta_y*0.5).item()
+            tw = (input[...,2] + (delta_w*torch.exp(input[...,2]))*0.5).item()
+            th = (input[...,3] + (delta_h*torch.exp(input[...,3]))*0.5).item()
         #print(tw,th)
         #delta_w = delta_w*torch.exp(delta_w);
         #delta_h = delta_h*torch.exp(delta_h);    

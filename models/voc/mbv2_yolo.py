@@ -10,7 +10,17 @@ try:
     from torch.hub import load_state_dict_from_url
 except ImportError:
     from torch.utils.model_zoo import load_url as load_state_dict_from_url
-    
+class Blending(nn.Module):
+    def __init__(self,channels):
+        super(Blending, self).__init__()
+        self.weights = torch.nn.Parameter(torch.zeros(channels, requires_grad = True))
+    def forward(self, x, y):
+        prod = torch.sigmoid(self.weights)
+        #print(prod)
+        prod = prod.repeat(x.size(0),x.size(2),x.size(3),1).to(device)  
+        prod = prod.permute(0, 3, 1, 2).contiguous()
+        out = x*prod + y*(1-prod)
+        return out
 class BasicConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,depthwise=False):
         super(BasicConv, self).__init__()
