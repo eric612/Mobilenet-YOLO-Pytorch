@@ -1,19 +1,19 @@
 # Mobilenet-YOLO-Pytorch
 
-Include mobilenet series (v1,v2,v3...) and yolo series (yolov3,yolov4,...)
+Like my previous project [Mobilenet-YOLO](https://github.com/eric612/MobileNet-YOLO) , the loss function was very simular to original implemention of darknet
 
-The first version will be a pure yolov3 model like my previous project [Mobilenet-YOLO](https://github.com/eric612/MobileNet-YOLO) 
+![training process](/images/show.gif)
 
 ## Model
 
 A pytorch implementation of MobileNet-YOLO detection network , train on 07+12 , test on VOC2007 (imagenet pretrained , not coco)
 
-Network|mAP|Resolution|yolov3|yolov4|
-:---:|:---:|:---:|:---:|:---:|
-MobileNetV2|71.2|352|✓| |
-MobileNetV2| |352| |✓|
-MobileNetV3| | | | |
-MobileNetV3| | | | |
+Network|mAP|Resolution|yolov3|yolov4|download|
+:---:|:---:|:---:|:---:|:---:|:---:|
+MobileNetV2|71.2|352|✓| |[checkpoint](https://drive.google.com/file/d/1PPfmv5aHz014jBiKiH2hL-YAQDOrm2hx/view?usp=sharing)|
+MobileNetV2| |352| |✓| |
+MobileNetV3|71.5|352|✓| |[checkpoint](https://drive.google.com/file/d/18bq-em_xk4SMoM3eMnMmaHTOCuAPKhwp/view?usp=sharing)|
+MobileNetV3| |352| |✓| |
 
 ## Training steps
 
@@ -32,7 +32,7 @@ sh scripts/train.sh
 ```  
 ## Demo
 
-Download [checkpoint](https://drive.google.com/file/d/1PPfmv5aHz014jBiKiH2hL-YAQDOrm2hx/view?usp=sharing) , and save at $Mobilenet-YOLO-Pytorch/checkpoint/
+Download  checkpoint, and save at $Mobilenet-YOLO-Pytorch/checkpoint/
 
 ```
 sh scripts/inference.sh 
@@ -45,7 +45,7 @@ sh scripts/inference.sh
 - [ ] Multi-Task 
 - [ ] Hyper Parameter Tuning
 - [ ] Prning 
-- [ ] Porting (KL520 , ncnn , ...)
+- [ ] Porting (KL520 , ncnn , caffe , ...)
 
 ## Acknowledgements
 

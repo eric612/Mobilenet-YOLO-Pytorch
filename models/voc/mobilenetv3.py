@@ -199,23 +199,28 @@ class MobileNetV3_Small(nn.Module):
 def MobileNetV3(pretrained, **kwargs):
     model = MobileNetV3_Large()
     if pretrained:
-        model_dict = model.state_dict()
-        checkpoint = load_state_dict_from_url(pretrained,progress=True)
-        #pretrained_dict = torch.load(pretrained)['state_dict']
-        for k1, v1 in checkpoint.items() :
-            n1 = k1.replace('module.', '')
-            #print(k1)
-            
-            for k2, v2 in model_dict.items() :
-                n2 = k2.replace('bneck2.0.', 'bneck.13.')
-                n2 = n2.replace('bneck2.1.', 'bneck.14.')
-                if n1 == n2 :
-                    #print(k1,k2)
-                    model_dict[k2]=v1
-                           
-        model.load_state_dict(model_dict)
-    else:
-        raise Exception("darknet request a pretrained path. got [{}]".format(pretrained))
+        if isinstance(pretrained, str):
+            model_dict = model.state_dict()
+            #model.load_state_dict(torch.load(pretrained)['state_dict'])
+            pretrained_dict = torch.load(pretrained)['state_dict']
+
+
+            for k1, v1 in pretrained_dict.items() :
+                n1 = k1.replace('module.', '')
+                #print(k1)
+                
+                for k2, v2 in model_dict.items() :
+                    n2 = k2.replace('bneck2.0.', 'bneck.13.')
+                    n2 = n2.replace('bneck2.1.', 'bneck.14.')
+                    if n1 == n2 :
+                        #print(k1,k2)
+                        model_dict[k2]=v1
+
+            model.load_state_dict(model_dict)
+            #torch.save(model, 'test.pth.tar')
+            #for name,param in model.named_parameters():
+        else:
+            raise Exception("darknet request a pretrained path. got [{}]".format(pretrained))
     return model
 
 def test():

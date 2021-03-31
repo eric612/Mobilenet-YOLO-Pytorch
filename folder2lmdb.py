@@ -23,7 +23,12 @@ import numpy as np
 import shutil
 import random
 import yaml
-
+if torch.__version__> '1.8':
+    from torchvision.transforms import InterpolationMode
+    interp = InterpolationMode.BILINEAR
+else :
+    interp = 2
+    
 class ImageFolderLMDB(data.Dataset):
     def __init__(self, db_path,transform_size = [[352,352]], phase=None):
         self.db_path = db_path
@@ -106,7 +111,7 @@ class ImageFolderLMDB(data.Dataset):
         labels = list()
         random_size = random.choice(self.transform_size)
         self.transform = transforms.Compose([
-                transforms.Resize(size=random_size, interpolation=2),
+                transforms.Resize(size=random_size, interpolation=interp),
                 transforms.ToTensor(),
                 self.normalize,
             ])  
