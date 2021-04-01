@@ -98,6 +98,8 @@ class YOLOLoss(nn.Module):
         anchor_shapes = torch.FloatTensor(np.concatenate((np.zeros((self.num_anchors, 2)),np.array(anchors)), 1)) 
         iou_loss = torch.FloatTensor(0).to(device)
         iou_weight = torch.FloatTensor(0).to(device)
+        in_dim = torch.Tensor([in_w,in_h])
+        #print(need_grad_tensor.view(,self.num_classes+1).shape)
         for b in range(bs):
             if len(target[b]) == 0 :
                 targets_weight_parts[b] = 1
@@ -118,59 +120,49 @@ class YOLOLoss(nn.Module):
             targets_weight_parts[b,...,m] = 1
             targets_parts[b,...,m] = 0
 
-         
-            for t in range(len(target[b])):                               
-                gt = target[b][t].clone().detach()
-                gx = gt[1] * in_w
-                gy = gt[2] * in_h
-                gw = gt[3] 
-                gh = gt[4]
-                gi = int(gx)
-                gj = int(gy)
-                
-                #print(index)
+            gt = target[b].clone().detach()
+            gxgy = gt[...,1:3] * in_dim 
+            gt[...,1:3] = 0
+            gt_box = gt[...,1:]
+            gt[...,0] = gt[...,0] - 1
+            anch_ious = find_jaccard_overlap(gt_box, anchor_shapes)
+            best_n = torch.argmax(anch_ious,1)
+            #mask = best_n[:] in self.mask
+            for t in range(len(target[b])):                                               
+                gi = int(gxgy[t,0])
+                gj = int(gxgy[t,1])                
+                #anch_ious_this = anch_ious[self.mask] 
+                #iou_thresh_list = (anch_ious_this>0.213).tolist()
+                #bn = self.num_anchors + 1 
+                if best_n[t] in self.mask :
+                    bn = self.mask.index(best_n[t])  
+                    k = bn 
+                #for k in range(self.num_mask):
+                    #if k == bn or iou_thresh_list[k] :
+                    count+= 1                
+                    cls_index = int(gt[t,0])
+                    
+                    targets_parts[b,k,gj,gi] = 1 
+                    targets_weight_parts[b,k,gj,gi] = 1 
+                    conf = output[b,k,gj,gi,0].item()
+                    obj = obj + conf
+                    no_obj = no_obj - conf
+                    gt_box_xy = gt_boxes[t].unsqueeze(0)
+                    pred = pred_boxes[b, k, gj, gi].unsqueeze(0)
 
-                gt_box = torch.FloatTensor([0, 0, gw, gh]).unsqueeze(0)
-                anch_ious = find_jaccard_overlap(gt_box, anchor_shapes).squeeze(0)
-                best_n = torch.argmax(anch_ious)
-                anch_ious_this = anch_ious[self.mask] 
-                iou_thresh_list = (anch_ious_this>0.4).tolist()
-                bn = self.num_anchors + 1 
-                if best_n in self.mask :
-                    bn = self.mask.index(best_n)  
-                    #k = bn 
-                for k in range(self.num_mask):
-                    if k == bn or iou_thresh_list[k] :
-                        count+= 1                
-                        cls_index = int(target[b][t][0].item())-1
-                        
-                        #accumulate = targets_weight[b, k, gj, gi,0]
-                        targets_parts[b,k,gj,gi] = 1 
-                        targets_weight_parts[b,k,gj,gi] = 1 
-                        conf = output[b,k,gj,gi,0].item()
-                        obj = obj + conf
-                        no_obj = no_obj - conf
-                        gt_box_xy = gt_boxes[t].unsqueeze(0)
-                        pred = pred_boxes[b, k, gj, gi].unsqueeze(0)
-                        #print(pred,gt_box_xy)
-                        #inp = output[b, k, gj, gi,:4].clone().detach()
-                        #outp = targets[b, k, gj, gi,:4].clone().detach()
-                        giou,iou = self.box_ciou(gt_box_xy,pred)
-                        
-                        #print(giou)
-                        iou_loss = torch.cat((iou_loss,(1. - giou).to(device)))
-                        area = 2.0 - self.get_area(gt_box_xy)
-                        
-                        iou_weight = torch.cat((iou_weight,(area).to(device)))
-                        #targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.IOU_Loss(gt_box_xy,pred,inp,outp,accumulate)
-                        #targets[b, k, gj, gi,:4],targets_weight[b, k, gj, gi,:4],iou = self.DenseBoxLoss(gt_box_xy,pred,gi,gj,this_anchors[k],in_w,in_h)
-                        if iou>ignore_threshold :
-                            recall = recall + 1                         
-                        ious = ious + iou.item()
-                        cls_tensor = targets[b, k, gj, gi,1:]
-                        cls_weight = targets_weight[b, k, gj, gi,1:]
-                        self.class_loss(cls_tensor,cls_weight,cls_index)
-                        cls_score = cls_score + output[b,k,gj,gi,1+cls_index].item()
+                    giou,iou = self.box_ciou(gt_box_xy,pred)
+
+                    iou_loss = torch.cat((iou_loss,(1. - giou).to(device)))
+                    area = 2.0 - self.get_area(gt_box_xy)
+                    
+                    iou_weight = torch.cat((iou_weight,(area).to(device)))
+                    if iou>ignore_threshold :
+                        recall = recall + 1                         
+                    ious = ious + iou.item()
+                    cls_tensor = targets[b, k, gj, gi,1:]
+                    cls_weight = targets_weight[b, k, gj, gi,1:]
+                    self.class_loss(cls_tensor,cls_weight,cls_index)
+                    cls_score = cls_score + output[b,k,gj,gi,1+cls_index].item()
         if count > 0:                
             obj_avg =  obj/count 
             cls_avg =  cls_score/count

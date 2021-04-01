@@ -14,22 +14,28 @@ class Blending(nn.Module):
     def __init__(self,channels):
         super(Blending, self).__init__()
         self.weights = torch.nn.Parameter(torch.zeros(channels, requires_grad = True))
-    def forward(self, x, y):
+    def forward(self, x, y = None):
         prod = torch.sigmoid(self.weights)
         #print(prod)
         prod = prod.repeat(x.size(0),x.size(2),x.size(3),1).to(device)  
-        prod = prod.permute(0, 3, 1, 2).contiguous()
-        out = x*prod + y*(1-prod)
+        prod = prod.permute(0, 3, 1, 2).contiguous()    
+        if y is not None :
+            out = x*prod + y*(1-prod)
+        else :
+            out = x*prod + torch.sigmoid(x)
         return out
 class BasicConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,depthwise=False):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,depthwise=False,Blending=False):
         super(BasicConv, self).__init__()
         if depthwise == False :
             self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, kernel_size//2, bias=False)
         else :
             self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, kernel_size//2, bias=False,groups = in_channels)
         self.bn = nn.BatchNorm2d(out_channels)
-        self.activation = nn.ReLU()
+        if Blending : 
+            self.activation = Blending(out_channels)
+        else :
+            self.activation = nn.ReLU()
         self._initialize_weights()
 
     def forward(self, x):
@@ -86,7 +92,7 @@ class Connect(nn.Module):
             BasicConv(channels, channels, 3,depthwise=True),
             BasicConv(channels, channels, 1),
         )
-
+        self.blending = Blending(channels)
     def forward(self, x,):        
         x2 = self.conv(x)
         x = torch.add(x,x2)
@@ -110,7 +116,7 @@ class yolo(nn.Module):
         self.conv_for_S16 = DepthwiseConvolution(96,256)
         self.connect_for_S16 = Connect(256)
         self.yolo_headS16 = yolo_head([512, self.num_anchors * (5 + self.num_classes)],256)
-
+        self.blending = Blending(256)
         self.yolo_losses = []
         for i in range(2):
             self.yolo_losses.append(YOLOLoss(config["yolo"]["anchors"],config["yolo"]["mask"][i] \
@@ -147,6 +153,7 @@ class yolo(nn.Module):
         out0 = self.yolo_headS32(S32) 
         S32_Upsample = self.upsample(S32)
         S16 = self.conv_for_S16(feature1)
+        #S16 = self.blending(S16,S32_Upsample)
         S16 = torch.add(S16,S32_Upsample)
         S16 = self.connect_for_S16(S16)
         out1 = self.yolo_headS16(S16)
