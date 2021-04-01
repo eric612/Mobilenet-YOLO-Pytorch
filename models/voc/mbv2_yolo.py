@@ -25,14 +25,14 @@ class Blending(nn.Module):
             out = x*prod + torch.sigmoid(x)
         return out
 class BasicConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,depthwise=False,Blending=False):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,depthwise=False,AlphaBlending=False):
         super(BasicConv, self).__init__()
         if depthwise == False :
             self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, kernel_size//2, bias=False)
         else :
             self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, kernel_size//2, bias=False,groups = in_channels)
         self.bn = nn.BatchNorm2d(out_channels)
-        if Blending : 
+        if AlphaBlending == True: 
             self.activation = Blending(out_channels)
         else :
             self.activation = nn.ReLU()
@@ -73,7 +73,7 @@ def DepthwiseConvolution(in_filters,out_filters):
     m = nn.Sequential(
         BasicConv(in_filters, in_filters, 3,depthwise=True),
         BasicConv(in_filters, in_filters, 1),
-        BasicConv(in_filters, out_filters, 1),
+        BasicConv(in_filters, out_filters, 1 , AlphaBlending = True),
     )
     return m
 def yolo_head(filters_list, in_filters):
@@ -90,7 +90,7 @@ class Connect(nn.Module):
 
         self.conv = nn.Sequential(
             BasicConv(channels, channels, 3,depthwise=True),
-            BasicConv(channels, channels, 1),
+            BasicConv(channels, channels, 1 , AlphaBlending = True),
         )
         self.blending = Blending(channels)
     def forward(self, x,):        
