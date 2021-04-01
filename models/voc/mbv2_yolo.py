@@ -20,7 +20,7 @@ class Blending(nn.Module):
         prod = prod.repeat(x.size(0),x.size(2),x.size(3),1).to(device)  
         prod = prod.permute(0, 3, 1, 2).contiguous()    
         if y is not None :
-            out = x*prod + y*(1-prod)
+            out = (x+y)*prod + torch.sigmoid(x) + torch.sigmoid(y)
         else :
             out = x*prod + torch.sigmoid(x)
         return out
@@ -80,7 +80,7 @@ def yolo_head(filters_list, in_filters):
     m = nn.Sequential(
         BasicConv(in_filters, in_filters, 3,depthwise=True),
         BasicConv(in_filters, in_filters, 1),
-        BasicConv(in_filters, filters_list[0], 1),
+        BasicConv(in_filters, filters_list[0], 1,AlphaBlending=True),
         nn.Conv2d(filters_list[0], filters_list[1], 1),
     )
     return m
@@ -106,7 +106,7 @@ class yolo(nn.Module):
         model_url = 'https://raw.githubusercontent.com/d-li14/mobilenetv2.pytorch/master/pretrained/mobilenetv2-c5e733a8.pth'
         self.backbone = mobilenetv2(model_url)
 
-        self.conv_for_S32 = BasicConv(1280,512,1)
+        self.conv_for_S32 = BasicConv(1280,512,1,AlphaBlending=True)
         #print(num_anchors * (5 + num_classes))
         self.connect_for_S32 = Connect(512)
         self.yolo_headS32 = yolo_head([1024, self.num_anchors * (5 + self.num_classes)],512)
@@ -153,8 +153,8 @@ class yolo(nn.Module):
         out0 = self.yolo_headS32(S32) 
         S32_Upsample = self.upsample(S32)
         S16 = self.conv_for_S16(feature1)
-        #S16 = self.blending(S16,S32_Upsample)
-        S16 = torch.add(S16,S32_Upsample)
+        S16 = self.blending(S16,S32_Upsample)
+        #S16 = torch.add(S16,S32_Upsample)
         S16 = self.connect_for_S16(S16)
         out1 = self.yolo_headS16(S16)
         
