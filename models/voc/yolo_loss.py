@@ -9,26 +9,27 @@ import gc
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 import torchvision
-class MSigmoid(Function):
-    @staticmethod
-    def forward(ctx, input):
-        #ctx.save_for_backward(input)
-        sigmoid_eval = 1.0/(1.0 + torch.exp(-input))
-        #input = sigmoid_eval
-        return sigmoid_eval
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        #input, = ctx.saved_tensors
-        #print(grad_output)
-        # Maximum likelihood and gradient descent demonstration
-        # https://blog.csdn.net/yanzi6969/article/details/80505421
-        # https://xmfbit.github.io/2018/03/21/cs229-supervised-learning/
-        # https://zlatankr.github.io/posts/2017/03/06/mle-gradient-descent
-        grad_input = grad_output.clone()
-        return grad_input
         
 class YOLOLoss(nn.Module):
+    class sigmoid(Function):
+        @staticmethod
+        def forward(ctx, input):
+            #ctx.save_for_backward(input)
+            sigmoid_eval = 1.0/(1.0 + torch.exp(-input))
+            #input = sigmoid_eval
+            return sigmoid_eval
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            #input, = ctx.saved_tensors
+            #print(grad_output)
+            # Maximum likelihood and gradient descent demonstration
+            # https://blog.csdn.net/yanzi6969/article/details/80505421
+            # https://xmfbit.github.io/2018/03/21/cs229-supervised-learning/
+            # https://zlatankr.github.io/posts/2017/03/06/mle-gradient-descent
+            grad_input = grad_output.clone()
+            return grad_input
     def __init__(self, anchors, mask, num_classes, img_size,ignore_threshold,val_conf = 0.1):
         super(YOLOLoss, self).__init__()
         self.anchors = anchors
@@ -39,7 +40,7 @@ class YOLOLoss(nn.Module):
         self.bbox_attrs = 5 + num_classes
         self.img_size = img_size
         self.ignore_threshold = ignore_threshold
-        self.sigmoid = MSigmoid()
+        #self.sigmoid = self.MSigmoid()
         self.nn_sigmoid = torch.nn.Sigmoid()
         self.val_conf = val_conf
         self.mse_loss = nn.MSELoss()

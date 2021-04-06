@@ -46,6 +46,8 @@ parser.add_argument('-c', '--checkpoint', default='checkpoint', type=str, metava
                     help='path to save checkpoint (default: checkpoint)')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
+parser.add_argument('-o', '--export', dest='export', default='checkpoint', type=str, metavar='PATH',
+                    help='path to export checkpoint (default: checkpoint)')                   
 #parser.add_argument('-e', '--evaluate', type=bool, default=False, help='Evaluate mAP? default=False')   
 random.seed(10992)
                               
@@ -135,7 +137,7 @@ def main():
                     'best_acc': best_acc,
                     'optimizer' : optimizer.state_dict(),
                     'conf' : model.yolo_losses[0].val_conf,
-                }, False,model, checkpoint=args.checkpoint,filename='epoch%d_checkpoint.pth.tar'%epoch) 
+                }, False,model,config, checkpoint=args.checkpoint,filename='epoch%d_checkpoint.pth.tar'%epoch,export_path = args.export) 
             adjust_learning_rate(optimizer, 0.5)
             print('adjusted to current lr: '
                   '{}'.format([param_group['lr'] for param_group in optimizer.param_groups]))  
@@ -162,7 +164,7 @@ def main():
                     'best_acc': best_acc,
                     'optimizer' : optimizer.state_dict(),
                     'conf' : model.yolo_losses[0].val_conf,
-                }, is_best,model, checkpoint=args.checkpoint)
+                }, is_best,model,config, checkpoint=args.checkpoint,export_path = args.export)
             
         
 def train(train_loader, model, optimizer,epoch):
@@ -328,13 +330,15 @@ def test(test_loader, model, optimizer,epoch , config):
     pp.pprint(APs)
     print('\nMean Average Precision (mAP): %.3f' % mAP)
     return mAP
-def save_checkpoint(state, is_best,model, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best,model,config, checkpoint='checkpoint', filename='checkpoint.pth.tar',export_path = 'checkpoint'):
 
     filepath = os.path.join(checkpoint, filename)
     torch.save(state, filepath)
     #save_onnx(filepath,model)
     if is_best:
-        shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
+        torch.save(model, os.path.join(checkpoint, 'model_best.pth.tar'))
+        #dummy_input = torch.randn(1, 3, config["img_w"], config["img_h"]) #       
+        #torch.onnx.export(model, dummy_input,os.path.join(export_path, 'model_best.onnx'))        
 def adjust_confidence(gt_box_num,pred_box_num,conf):
     if pred_box_num>gt_box_num*3 :
         conf = conf + 0.01
