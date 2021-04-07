@@ -73,14 +73,14 @@ def DepthwiseConvolution(in_filters,out_filters):
     m = nn.Sequential(
         BasicConv(in_filters, in_filters, 3,depthwise=True),
         BasicConv(in_filters, in_filters, 1),
-        BasicConv(in_filters, out_filters, 1 , AlphaBlending = True),
+        BasicConv(in_filters, out_filters, 1 , AlphaBlending = False),
     )
     return m
 def yolo_head(filters_list, in_filters):
     m = nn.Sequential(
         BasicConv(in_filters, in_filters, 3,depthwise=True),
         BasicConv(in_filters, in_filters, 1),
-        BasicConv(in_filters, filters_list[0], 1,AlphaBlending=True),
+        BasicConv(in_filters, filters_list[0], 1,AlphaBlending=False),
         nn.Conv2d(filters_list[0], filters_list[1], 1),
     )
     return m
@@ -90,7 +90,7 @@ class Connect(nn.Module):
 
         self.conv = nn.Sequential(
             BasicConv(channels, channels, 3,depthwise=True),
-            BasicConv(channels, channels, 1 , AlphaBlending = True),
+            BasicConv(channels, channels, 1 , AlphaBlending = False),
         )
         self.blending = Blending(channels)
     def forward(self, x,):        
@@ -153,8 +153,8 @@ class yolo(nn.Module):
         out0 = self.yolo_headS32(S32) 
         S32_Upsample = self.upsample(S32)
         S16 = self.conv_for_S16(feature1)
-        S16 = self.blending(S16,S32_Upsample)
-        #S16 = torch.add(S16,S32_Upsample)
+        #S16 = self.blending(S16,S32_Upsample)
+        S16 = torch.add(S16,S32_Upsample)
         S16 = self.connect_for_S16(S16)
         out1 = self.yolo_headS16(S16)
         
