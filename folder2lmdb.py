@@ -24,6 +24,25 @@ import shutil
 import random
 import yaml
 from utils.box import wh_to_x2y2
+import imgaug.augmenters as iaa
+sometimes = lambda aug: iaa.Sometimes(0.5, aug)
+seq = iaa.Sequential([
+    sometimes(iaa.SomeOf((1, 2),
+        [
+            #sometimes(iaa.Superpixels(p_replace=(0, 1.0), n_segments=(20, 200))), # convert images into their superpixel representation
+            iaa.OneOf([
+                iaa.GaussianBlur((0, 3.0)), # blur images with a sigma between 0 and 3.0
+                iaa.AverageBlur(k=(2, 7)), # blur image using local means with kernel sizes between 2 and 7
+                iaa.MedianBlur(k=(3, 11)), # blur image using local medians with kernel sizes between 2 and 7
+            ]),
+            iaa.Sharpen(alpha=(0, 0.3), lightness=(0.8, 1.2)), # sharpen images
+            iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05*255), per_channel=0.5), # add gaussian noise to images
+            iaa.Dropout((0.00, 0.01), per_channel=0.1), # randomly remove up to 10% of the pixels
+        ],
+        random_order=True
+    ))
+])
+
 if torch.__version__> '1.8':
     from torchvision.transforms import InterpolationMode
     interp = InterpolationMode.BILINEAR
@@ -85,8 +104,9 @@ class ImageFolderLMDB(data.Dataset):
         labels = target2[...,0]
         #print(boxes2)
         difficulties = torch.zeros_like(labels)
-
-        image = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))         
+        img = seq(image=img)  # done by the library
+        image = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
+        
         new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = self.phase)
 
         #self.show_image(new_img,new_boxes,new_labels)
