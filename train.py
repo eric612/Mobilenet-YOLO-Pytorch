@@ -19,6 +19,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 import folder2lmdb
+import CustomBatchSampler
 import cv2
 from models.voc.mbv2_yolo import yolo
 from models.voc.yolo_loss import *
@@ -36,9 +37,9 @@ parser.add_argument('--lr', '--learning-rate', default=0.0005, type=float,
                     metavar='LR', help='initial learning rate') 
 parser.add_argument('--warm-up', '--warmup',  default=[], type=float,
                     metavar='warmup', help='warm up learning rate')                    
-parser.add_argument('--epochs', default=300, type=int, metavar='N',
+parser.add_argument('--epochs', default=400, type=int, metavar='N',
                     help='number of total epochs to run')
-parser.add_argument('--schedule', type=int, nargs='+', default=[125,200,250],
+parser.add_argument('--schedule', type=int, nargs='+', default=[175,275,350],
                         help='Decrease learning rate at these epochs.')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
@@ -67,15 +68,20 @@ def main():
     train_dataset = image_folder(
         db_path=dataset_path["trainval_dataset_path"]["lmdb"],
         transform_size=config["train_img_size"],
-        phase='train'
+        phase='train',batch_size = config["batch_size"]
     )       
     test_dataset = image_folder(
         db_path=dataset_path["test_dataset_path"]["lmdb"],
         transform_size=[[config["img_w"],config["img_h"]]],
-        phase='test'
+        phase='test',batch_size = config["batch_size"]
     )    
+    BatchSampler  = CustomBatchSampler.AmplificationBatchSampler                     
+    sampler = BatchSampler (
+        torch.utils.data.sampler.RandomSampler(train_dataset),
+        batch_size=config["batch_size"],
+        drop_last=False)
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, config["batch_size"], shuffle=True,
+        train_dataset,batch_sampler = sampler, 
         num_workers=4, pin_memory=True,collate_fn=train_dataset.collate_fn)
     test_loader = torch.utils.data.DataLoader(
         test_dataset, config["batch_size"], shuffle=False,
@@ -149,7 +155,7 @@ def main():
             print('\nEpoch: [%3d | %3d] LR: %f        | loss   | cnt | iou   | obj   | no_obj | class | recall | cnt2 | iou2  | obj2  | no_obj2 | class2 | recall2 |' \
                     % (epoch, args.epochs, optimizer.param_groups[0]['lr']))
         
-        train_loss,iou = train(train_loader, model, optimizer, epoch)
+        train_loss,iou = train(train_loader, model, optimizer, epoch,sampler)
         
         if not log :
             test_acc = test(test_loader, model, optimizer, epoch , config)  
@@ -167,9 +173,9 @@ def main():
                 }, is_best,model,config, checkpoint=args.checkpoint,export_path = args.export)
             
         
-def train(train_loader, model, optimizer,epoch):
+def train(train_loader, model, optimizer,epoch,sampler):
     model.train()
-    bar = IncrementalBar('Training', max=len(train_loader),width=12)
+    bar = IncrementalBar('Training', max=len(sampler),width=12)
     #batch_time = AverageMeter()
     #data_time = AverageMeter()
     losses = AverageMeter()
@@ -182,7 +188,9 @@ def train(train_loader, model, optimizer,epoch):
     cls_score = [AverageMeter(),AverageMeter()]
     count = [AverageMeter(),AverageMeter()]
     #end = time.time()
-    for batch_idx, (images,targets) in enumerate(train_loader):
+    for batch_idx, (images,targets,total_num) in enumerate(train_loader):
+        #print('\n1-',sum(sampler.get_mosaic_array()),'\n')
+        #print('1-',sampler.mosaic_array,'\n')
         #print(targets)
         #data_time.update(time.time() - end)
         bs = images.size(0)
@@ -239,7 +247,7 @@ def train(train_loader, model, optimizer,epoch):
             #cls=cls_loss.avg,
             )                
 
-        bar.next()
+        bar.next(total_num)
     bar.finish()
     return losses.avg,(iou[0].avg+iou[1].avg)/2
     

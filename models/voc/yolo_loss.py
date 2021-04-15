@@ -153,7 +153,7 @@ class YOLOLoss(nn.Module):
 
                     giou,iou = self.box_ciou(gt_box_xy,pred)
 
-                    iou_loss = torch.cat((iou_loss,(1. - giou).to(device)))
+                    iou_loss = torch.cat((iou_loss,giou.to(device)))
                     area = 2.0 - self.get_area(gt_box_xy)
                     
                     iou_weight = torch.cat((iou_weight,(area).to(device)))
@@ -214,7 +214,7 @@ class YOLOLoss(nn.Module):
             #print(self.ignore_threshold)
             target,weights,output,recall,avg_iou,obj,no_obj,cls_score,count,iou_losses,iou_weights = self.get_target(targets,input, scaled_anchors,in_w, in_h,self.ignore_threshold)
             loss = self.weighted_mse_loss(output , target , weights)
-            iou_target = torch.zeros_like(iou_losses)
+            iou_target = torch.ones_like(iou_losses)
             #iou_loss= torch.sum(iou_target-iou_losses)
             iou_loss = self.weighted_mse_loss(iou_losses,iou_target,iou_weights)/iou_losses.numel()
             #iou_loss = self.mse_loss(iou_losses,iou_target)/iou_losses.numel()
@@ -242,44 +242,66 @@ class YOLOLoss(nn.Module):
         r = torch.max(box1[...,2],box2[...,2]).unsqueeze(0)
         b = torch.max(box1[...,3],box2[...,3]).unsqueeze(0)
         #print(t.shape)
-        box_c = torch.cat((l,t,r,b),1)
-        return box_c
+        box_c = torch.cat((l,t,r,b))
+        return box_c.permute(1,0)
     def box_ciou(self,box1,box2):
+        ciou = torch.zeros(0,1).to(device)
+        iou = torch.zeros(0,1).to(device)
+        #if box2.size(0) == 0 :
+        #    return ciou,iou
         box_c = self.box_c(box1,box2)
-        c = self.get_area(box_c)       
+        #print(box_c.shape)
+        c = self.get_area(box_c).unsqueeze(1)       
         iou = find_jaccard_overlap(box1, box2)
 
-        w1,h1 = box1[...,2] - box1[...,0],box1[...,3] - box1[...,1]
-        w2,h2 = box2[...,2] - box2[...,0],box2[...,3] - box2[...,1]
-        x1,y1 = (box1[...,2] + box1[...,0])/2,(box1[...,1] + box1[...,3])/2
-        x2,y2 = (box2[...,2] + box2[...,0])/2,(box2[...,1] + box2[...,3])/2
+        w1,h1 = (box1[...,2] - box1[...,0]).unsqueeze(1),(box1[...,3] - box1[...,1]).unsqueeze(1)
+        w2,h2 = (box2[...,2] - box2[...,0]).unsqueeze(1),(box2[...,3] - box2[...,1]).unsqueeze(1)
+        x1,y1 = (box1[...,2] + box1[...,0]).unsqueeze(1)/2,(box1[...,1] + box1[...,3]).unsqueeze(1)/2
+        x2,y2 = (box2[...,2] + box2[...,0]).unsqueeze(1)/2,(box2[...,1] + box2[...,3]).unsqueeze(1)/2
+        
         u = (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
-        if c==0 :
-            ciou_term = iou
-        else :
-            d = u/c
-            ar_gt  = w2/h2
-            ar_pred  = w1/h1
-            ar_loss = 4 / (math.pi * math.pi) * (torch.atan(ar_gt) - torch.atan(ar_pred)) * (torch.atan(ar_gt) - torch.atan(ar_pred));
-            alpha = ar_loss / (1 - iou + ar_loss + 0.000001);
-            ciou_term = d + alpha * ar_loss;
+        #if c==0 :
+        #    ciou_term = iou
+        #else :
+        #print(c.shape,u.shape)
+        d = u/c
+        #print(d.shape)
+        ar_gt  = w2/h2
+        ar_pred  = w1/h1
+        
+        ar_loss = 4 / (math.pi * math.pi) * (torch.atan(ar_gt) - torch.atan(ar_pred)) * (torch.atan(ar_gt) - torch.atan(ar_pred));
+        alpha = ar_loss / (1 - iou + ar_loss + 0.000001);
+        ciou_term = d + alpha * ar_loss;
+        #print(ar_gt.shape,ar_pred.shape,ar_loss.shape,alpha.shape,torch.atan(ar_pred).shape)
+        mask = (c == 0) 
+        ciou_term = ciou_term * (~mask) + iou*mask
+        #print(ciou_term.shape,ciou.shape,iou.shape,box1.shape,box2.shape)
+        ciou = torch.cat((ciou,ciou_term))
+
         #print(iou,iou-giou_term)
         #print(c,u)
-        return iou-ciou_term,iou
+        return iou-ciou,iou
    
     def box_giou(self,box1,box2):
         box_c = self.box_c(box1,box2)
-        c = self.get_area(box_c)
+        c = self.get_area(box_c).unsqueeze(1)
         
         #iou = find_jaccard_overlap(box1, box2)
         u = find_union(box1,box2)
         i = find_intersection(box1,box2)
         iou = i/u
+        #print('iou.shape',iou.shape)
         #giou_term = [iou if (k1 == 0)  else (k1 - k2)/k1 for k1,k2 in zip(c, u)]
-        if c==0 :
-            giou_term = iou
-        else :
-            giou_term = (c-u)/c
+        #if c==0 :
+        #    giou_term = iou
+        #else :
+        #    giou_term = (c-u)/c
+        #print('c.shape',c.shape)
+        #print('u.shape',u.shape)
+        giou_term = (c-u)/c
+        #print('giou_term.shape',giou_term.shape)
+        mask = (c == 0) 
+        giou_term = giou_term * (~mask) + iou*mask            
         #print(iou,iou-giou_term)
         #print(c,u)
         return iou-giou_term,iou
@@ -393,13 +415,13 @@ class YOLOLoss(nn.Module):
     def class_loss(self,target_cls,target_weight,cls_idx):
         y_true = (1 - self.label_smooth_eps) + 0.5*self.label_smooth_eps;
         y_false = 0.5*self.label_smooth_eps;
-        if target_weight[cls_idx]:
-            target_cls[cls_idx] = y_true
-            target_weight[cls_idx] = 1                       
+        if target_weight[...,cls_idx]:
+            target_cls[...,cls_idx] = y_true
+            target_weight[...,cls_idx] = 1                       
         else :
-            target_cls[0:self.num_classes] = y_false
-            target_weight[0:self.num_classes] = 1
-            target_cls[cls_idx] = y_true
+            target_cls[...,0:self.num_classes] = y_false
+            target_weight[...,0:self.num_classes] = 1
+            target_cls[...,cls_idx] = y_true
             #target_weight[cls_idx] = 1
 
 

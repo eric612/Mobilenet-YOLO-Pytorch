@@ -23,14 +23,21 @@ import numpy as np
 import shutil
 import random
 import yaml
+from utils.box import wh_to_x2y2
 if torch.__version__> '1.8':
     from torchvision.transforms import InterpolationMode
     interp = InterpolationMode.BILINEAR
 else :
     interp = 2
-    
+CLASSES = (#'__background__',
+           'aeroplane', 'bicycle', 'bird', 'boat',
+           'bottle', 'bus', 'car', 'cat', 'chair',
+           'cow', 'diningtable', 'dog', 'horse',
+           'motorbike', 'person', 'pottedplant',
+           'sheep', 'sofa', 'train', 'tvmonitor')
+        
 class ImageFolderLMDB(data.Dataset):
-    def __init__(self, db_path,transform_size = [[352,352]], phase=None):
+    def __init__(self, db_path,batch_size,transform_size = [[352,352]], phase=None):
         self.db_path = db_path
         self.env = lmdb.open(db_path, subdir=os.path.isdir(db_path),
                              readonly=True, lock=False,
@@ -44,6 +51,7 @@ class ImageFolderLMDB(data.Dataset):
         self.transform_size = transform_size
         self.phase = phase
         self.img_aug = Image_Augmentation()
+        self.batch_size = batch_size
 
     def __getitem__(self, index):
         img, target = None, None
@@ -77,11 +85,11 @@ class ImageFolderLMDB(data.Dataset):
         labels = target2[...,0]
         #print(boxes2)
         difficulties = torch.zeros_like(labels)
-        #for cls,x,y,w,h in target:
-        #cls = target
-        image = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)) 
-        
+
+        image = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))         
         new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = self.phase)
+
+        #self.show_image(new_img,new_boxes,new_labels)
 
         old_dims = torch.FloatTensor([new_img.width, new_img.height, new_img.width, new_img.height]).unsqueeze(0)
         new_boxes2 = new_boxes / old_dims  # percent coordinates
@@ -97,6 +105,28 @@ class ImageFolderLMDB(data.Dataset):
 
 
         return (new_img,new_target)
+        
+    def show_image(self,image,boxes,labels,convert=False): 
+    
+        cv_img = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
+        
+        for idx,box in enumerate(boxes) : 
+            if convert :
+                #print(box,cv_img.shape)
+                wh_to_x2y2(box)
+                #print(box,cv_img.shape)
+                box[0],box[2] = box[0]*cv_img.shape[1],box[2]*cv_img.shape[1]
+                box[1],box[3] = box[1]*cv_img.shape[0],box[3]*cv_img.shape[0]
+                
+            cv2.rectangle(cv_img, (int(box[0]),int(box[1])), (int(box[2]),int(box[3])), (0,255,0), 2)
+            text=CLASSES[int(labels[idx])-1].lower()
+            cv2.putText(cv_img, text, (int(box[0]),int(box[1]-5)), cv2.FONT_HERSHEY_SIMPLEX,0.5, (0, 255, 255), 1, cv2.LINE_AA)
+            
+        cv2.namedWindow('frame',cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('frame', 640, 480)        
+        cv2.imshow('frame', cv_img)
+        key = cv2.waitKey(0) 
+        
 
     def __len__(self):
         return self.length
@@ -106,7 +136,6 @@ class ImageFolderLMDB(data.Dataset):
     def set_transform(self,transform):
         self.transform = transform
     def collate_fn(self, batch):
-
         images = list()
         labels = list()
         random_size = random.choice(self.transform_size)
@@ -115,15 +144,44 @@ class ImageFolderLMDB(data.Dataset):
                 transforms.ToTensor(),
                 self.normalize,
             ])  
-        
-        for b in batch:
-            images.append(self.transform(b[0]))
-            labels.append(b[1])
-        
-        images = torch.stack(images, dim=0)
 
-        return images, labels  
-         
+        index = 0
+        
+        b_size = len(batch) # b_size always >= self.batch_size , for image mosaic using
+        if self.phase == 'train':
+            mosaic_num = int((b_size-self.batch_size)/3)
+            need_mosaic = list()
+
+            if mosaic_num >= 0:                
+                need_mosaic = random.sample(range(0, self.batch_size), mosaic_num)
+            #print(mosaic_num)
+        
+            for i in range(min(self.batch_size,b_size)):          
+                
+                #self.show_image(b[0],b[1][...,1:5].clone(),b[1][...,0].clone(),convert=True)
+                if i in need_mosaic :
+                    bb = batch[index:index+4]
+                    #print(bb.shape)
+                    b = self.img_aug.Mosaic(bb,random_size)
+                    #self.show_image(b[0],b[1][...,1:5].clone(),b[1][...,0].clone(),convert=True)
+                    images.append(self.transform(b[0]))
+                    labels.append(b[1])
+                    index = index + 4
+                else :
+                    b = batch[index]
+                    images.append(self.transform(b[0]))
+                    labels.append(b[1]) 
+                    index = index + 1
+        else :
+            for b in batch:
+                images.append(self.transform(b[0]))
+                labels.append(b[1])  
+        #print('\n',index,len(batch))
+        images = torch.stack(images, dim=0)
+        if self.phase == 'train':
+            return images, labels, index  
+        else :
+            return images, labels  
 def raw_reader(path):
     with open(path, 'rb') as f:
         bin_data = f.read()
