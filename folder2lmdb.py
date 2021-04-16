@@ -130,13 +130,17 @@ class ImageFolderLMDB(data.Dataset):
         return (new_img,new_target)
     def __getitem__(self, index):
         #print(index)
-        group = []
-        for idx in index:
-            img,tar = self.get_single_image(idx)
-            group.append([img,tar])       
-        b = self.img_aug.Mosaic(group,[512,512])
-        #self.show_image(b[0],b[1][...,1:5].clone(),b[1][...,0].clone(),convert=True)
-        return b[0],b[1],len(index)
+        if type(index) == list:
+            group = []
+            for idx in index:
+                img,tar = self.get_single_image(idx)
+                group.append([img,tar])       
+            b = self.img_aug.Mosaic(group,[512,512])
+            #self.show_image(b[0],b[1][...,1:5].clone(),b[1][...,0].clone(),convert=True)
+            return b[0],b[1],len(index)
+        else:
+            img,tar = self.get_single_image(index)
+            return img,tar,1
         
     def show_image(self,image,boxes,labels,convert=False): 
     
