@@ -71,10 +71,13 @@ class ImageFolderLMDB(data.Dataset):
         self.phase = phase
         self.img_aug = Image_Augmentation()
         self.batch_size = batch_size
-
-    def __getitem__(self, index):
+        self.count = 0
+        
+    def get_single_image(self,index):
+    
         img, target = None, None
         env = self.env
+        
         with env.begin(write=False) as txn:
             byteflow = txn.get(self.keys[index])
         unpacked = pickle.loads(byteflow)
@@ -125,6 +128,15 @@ class ImageFolderLMDB(data.Dataset):
 
 
         return (new_img,new_target)
+    def __getitem__(self, index):
+        #print(index)
+        group = []
+        for idx in index:
+            img,tar = self.get_single_image(idx)
+            group.append([img,tar])       
+        b = self.img_aug.Mosaic(group,[512,512])
+        #self.show_image(b[0],b[1][...,1:5].clone(),b[1][...,0].clone(),convert=True)
+        return b[0],b[1],len(index)
         
     def show_image(self,image,boxes,labels,convert=False): 
     
@@ -146,7 +158,7 @@ class ImageFolderLMDB(data.Dataset):
         cv2.resizeWindow('frame', 640, 480)        
         cv2.imshow('frame', cv_img)
         key = cv2.waitKey(0) 
-        
+        #cv2.imwrite('images//frame%04d.jpg'%self.count, cv_img)
 
     def __len__(self):
         return self.length
@@ -164,42 +176,14 @@ class ImageFolderLMDB(data.Dataset):
                 transforms.ToTensor(),
                 self.normalize,
             ])  
-
-        index = 0
-        
-        b_size = len(batch) # b_size always >= self.batch_size , for image mosaic using
-        if self.phase == 'train':
-            mosaic_num = int((b_size-self.batch_size)/3)
-            need_mosaic = list()
-
-            if mosaic_num >= 0:                
-                need_mosaic = random.sample(range(0, self.batch_size), mosaic_num)
-            #print(mosaic_num)
-        
-            for i in range(min(self.batch_size,b_size)):          
-                
-                #self.show_image(b[0],b[1][...,1:5].clone(),b[1][...,0].clone(),convert=True)
-                if i in need_mosaic :
-                    bb = batch[index:index+4]
-                    #print(bb.shape)
-                    b = self.img_aug.Mosaic(bb,random_size)
-                    #self.show_image(b[0],b[1][...,1:5].clone(),b[1][...,0].clone(),convert=True)
-                    images.append(self.transform(b[0]))
-                    labels.append(b[1])
-                    index = index + 4
-                else :
-                    b = batch[index]
-                    images.append(self.transform(b[0]))
-                    labels.append(b[1]) 
-                    index = index + 1
-        else :
-            for b in batch:
-                images.append(self.transform(b[0]))
-                labels.append(b[1])  
-        #print('\n',index,len(batch))
+        count = 0
+        for b in batch:
+            images.append(self.transform(b[0]))
+            labels.append(b[1])  
+            count = b[2] + count
         images = torch.stack(images, dim=0)
         if self.phase == 'train':
-            return images, labels, index  
+            return images, labels, count
         else :
             return images, labels  
 def raw_reader(path):

@@ -80,7 +80,7 @@ def main():
         transform_size=[[config["img_w"],config["img_h"]]],
         phase='test',batch_size = config["batch_size"]
     )    
-    BatchSampler  = CustomBatchSampler.AmplificationBatchSampler                     
+    BatchSampler  = CustomBatchSampler.GreedyBatchSampler                     
     sampler = BatchSampler (
         torch.utils.data.sampler.RandomSampler(train_dataset),
         batch_size=config["batch_size"],

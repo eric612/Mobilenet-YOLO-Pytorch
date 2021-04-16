@@ -6,7 +6,7 @@ from torch.utils.data.sampler import Sampler
 from typing import Iterator, Optional, Sequence, List, TypeVar, Generic, Sized
 import random
   
-class AmplificationBatchSampler(Sampler[List[int]]):
+class GreedyBatchSampler(Sampler[List[int]]):
     r"""Wraps another sampler to yield a mini-batch of indices.
     Args:
         sampler (Sampler or Iterable): Base sampler. Can be any iterable object
@@ -50,13 +50,21 @@ class AmplificationBatchSampler(Sampler[List[int]]):
         return r,batch_size
     def __iter__(self):
         batch = []
-        r,batch_size = self.get_random()
+        #r,batch_size = self.get_random()
         #print('\n0-',batch_size)
+        #print(next(self.sampler))
+        #print(isinstance(self.sampler, Iterable))
+        num = random.choice([1,1,2,3,4])
+        buckets = []
         for idx in self.sampler:
-            batch.append(idx)
-            if len(batch) == batch_size:
+            buckets.append(idx)
+            if len(buckets) == num :
+                batch.append(buckets)
+                num = random.choice([1,1,2,3,4])
+                buckets = []
+            if len(batch) == self.batch_size:
                 yield batch
-                r,batch_size = self.get_random()
+                #r,batch_size = self.get_random()
                 #print('\n0-',batch_size)
                 batch = []
         

@@ -415,7 +415,7 @@ class YOLOLoss(nn.Module):
     def class_loss(self,target_cls,target_weight,cls_idx):
         y_true = (1 - self.label_smooth_eps) + 0.5*self.label_smooth_eps;
         y_false = 0.5*self.label_smooth_eps;
-        if target_weight[...,cls_idx]:
+        if target_weight[...,cls_idx]>0:
             target_cls[...,cls_idx] = y_true
             target_weight[...,cls_idx] = 1                       
         else :
