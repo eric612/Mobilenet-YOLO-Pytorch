@@ -45,7 +45,7 @@ class AmplificationBatchSampler(Sampler[List[int]]):
         return sum(self.mosaic_array)
     '''
     def get_random(self):
-        r = random.randint(1, self.batch_size/2)
+        r = random.randint(0, self.batch_size)
         batch_size = self.batch_size +(3*r)
         return r,batch_size
     def __iter__(self):

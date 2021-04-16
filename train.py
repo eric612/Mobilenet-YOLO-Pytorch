@@ -21,7 +21,7 @@ import torchvision.models as models
 import folder2lmdb
 import CustomBatchSampler
 import cv2
-from models.voc.mbv2_yolo import yolo
+from models.voc.mbv3_yolo import yolo
 from models.voc.yolo_loss import *
 from utils import Bar, Logger, AverageMeter
 from utils.eval_mAP import *
@@ -37,9 +37,9 @@ parser.add_argument('--lr', '--learning-rate', default=0.0005, type=float,
                     metavar='LR', help='initial learning rate') 
 parser.add_argument('--warm-up', '--warmup',  default=[], type=float,
                     metavar='warmup', help='warm up learning rate')                    
-parser.add_argument('--epochs', default=400, type=int, metavar='N',
+parser.add_argument('--epochs', default=450, type=int, metavar='N',
                     help='number of total epochs to run')
-parser.add_argument('--schedule', type=int, nargs='+', default=[175,275,350],
+parser.add_argument('--schedule', type=int, nargs='+', default=[175,250,325,400],
                         help='Decrease learning rate at these epochs.')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
