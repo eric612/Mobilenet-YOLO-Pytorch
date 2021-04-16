@@ -27,6 +27,7 @@ from utils import Bar, Logger, AverageMeter
 from utils.eval_mAP import *
 from pprint import PrettyPrinter
 import yaml
+import numpy as np
 pp = PrettyPrinter()
 parser = argparse.ArgumentParser(description='PyTorch Training')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -50,8 +51,12 @@ parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
 parser.add_argument('-o', '--export', dest='export', default='checkpoint', type=str, metavar='PATH',
                     help='path to export checkpoint (default: checkpoint)')                   
 #parser.add_argument('-e', '--evaluate', type=bool, default=False, help='Evaluate mAP? default=False')   
-random.seed(10992)
-                              
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)         
+    
 def main():
 
     with open('models/voc/config.yaml', 'r') as f:
@@ -82,7 +87,8 @@ def main():
         drop_last=False)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,batch_sampler = sampler, 
-        num_workers=4, pin_memory=True,collate_fn=train_dataset.collate_fn)
+        num_workers=4, pin_memory=True,collate_fn=train_dataset.collate_fn,
+        worker_init_fn=seed_worker)
     test_loader = torch.utils.data.DataLoader(
         test_dataset, config["batch_size"], shuffle=False,
         num_workers=4, pin_memory=True,collate_fn=test_dataset.collate_fn) 
