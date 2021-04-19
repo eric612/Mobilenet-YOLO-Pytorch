@@ -25,7 +25,7 @@ class Image_Augmentation():
         # Calculate dimensions of proposed expanded (zoomed-out) image
         original_h = image.size(1)
         original_w = image.size(2)
-        max_scale = 1.5
+        max_scale = 1.3
         scale = random.uniform(1, max_scale)
         new_h = int(scale * original_h)
         new_w = int(scale * original_w)
@@ -187,7 +187,23 @@ class Image_Augmentation():
                 new_image = d(new_image, adjust_factor)
 
         return new_image
-       
+    def generate_mosaic_mask(self,num,size):
+        mosaic_mask = [[0,0,size[0],size[1]]]
+        x_center = int(random.uniform(.25,.75)*size[0])
+        y_center = int(random.uniform(.25,.75)*size[1])
+        if num == 2 :
+            mosaic_mask1 = [[0,0,x_center,size[1]],[x_center,0,size[0],size[1]]]
+            mosaic_mask2 = [[0,0,size[0],y_center],[0,y_center,size[0],size[1]]]
+            mosaic_mask = random.choice([mosaic_mask1,mosaic_mask2])
+        elif num == 3 :
+            mosaic_mask1 = [[0,0,size[0],y_center],[0,y_center,x_center,size[1]],[x_center,y_center,size[0],size[1]]]
+            mosaic_mask2 = [[0,0,x_center,y_center],[x_center,0,size[0],y_center],[0,y_center,size[0],size[1]]]
+            mosaic_mask3 = [[0,0,x_center,size[1]],[x_center,0,size[0],y_center],[x_center,y_center,size[0],size[1]]]
+            mosaic_mask4 = [[0,0,x_center,y_center],[x_center,0,size[0],size[1]],[0,y_center,x_center,size[1]]]
+            mosaic_mask = random.choice([mosaic_mask1,mosaic_mask2,mosaic_mask3,mosaic_mask4])
+        elif num == 4 :
+            mosaic_mask = [[0,0,x_center,y_center],[x_center,0,size[0],y_center],[0,y_center,x_center,size[1]],[x_center,y_center,size[0],size[1]]]
+        return mosaic_mask
     def Mosaic(self,source,size):
         #print(size)
         #print(len(source))
@@ -196,24 +212,29 @@ class Image_Augmentation():
         background = np.zeros((size[0],size[1],3))
         #print(background.shape)
         counter = 0
-        x_center = int(random.uniform(.25,.75)*size[0])
-        y_center = int(random.uniform(.25,.75)*size[1])
-        mosaic_mask = [[0,0,x_center,y_center],[x_center,0,size[0],y_center],[0,y_center,x_center,size[1]],[x_center,y_center,size[0],size[1]]]
+        #x_center = int(random.uniform(.25,.75)*size[0])
+        #y_center = int(random.uniform(.25,.75)*size[1])
+        #mosaic_mask = [[0,0,x_center,y_center],[x_center,0,size[0],y_center],[0,y_center,x_center,size[1]],[x_center,y_center,size[0],size[1]]]
+        num = len(source)
+        mosaic_mask = self.generate_mosaic_mask(num,size)
         new_labels = torch.Tensor(0,5)
         for img,label in source :
 
-            
             width, height = (mosaic_mask[counter][2]-mosaic_mask[counter][0]),(mosaic_mask[counter][3]-mosaic_mask[counter][1])
-            aspect_ratio = height/width
+            aspect_ratio_src = img.height/img.width
+            min_ratio,max_ratio = aspect_ratio_src - 0.5 , aspect_ratio_src+0.5
+            
+            aspect_ratio_tar = height/width
             offset_x = 0
             offset_y = 0
-            if width/height>1.5 :
-                offset_x = random.randint(0, int(width-height*1.5))
-                width = int(height*1.5)    
+            if aspect_ratio_tar<min_ratio :
+                scale = 1/min_ratio
+                offset_x = random.randint(0, int(width-height*scale))
+                width = int(height*scale)    
                 
-            if height/width>1.5 :
-                offset_y = random.randint(0, int(height-width*1.5))
-                height = int(width*1.5)          
+            if aspect_ratio_tar>max_ratio :
+                offset_y = random.randint(0, int(height-width*max_ratio))
+                height = int(width*max_ratio)          
                 
             new_img = img.resize((width,height))
             new_img = np.array(new_img)
@@ -290,8 +311,8 @@ class Image_Augmentation():
             new_image = FT.to_pil_image(new_image)
 
             # Flip image with a 50% chance
-            if random.random() < 0.5:
-                new_image, new_boxes = self.flip_od(new_image, new_boxes)
+            #if random.random() < 0.5:
+            #    new_image, new_boxes = self.flip_od(new_image, new_boxes)
                 
             #new_image, new_boxes, new_labels = self.mosaic_mix(new_image,new_boxes,new_labels)
 

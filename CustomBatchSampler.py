@@ -34,7 +34,7 @@ class GreedyBatchSampler(Sampler[List[int]]):
         self.sampler = sampler
         self.batch_size = batch_size
         self.drop_last = drop_last
-        print('self.drop_last',self.drop_last)
+        #print('self.drop_last',self.drop_last)
         #self.mosaic_array = list()
 
     '''
@@ -54,13 +54,13 @@ class GreedyBatchSampler(Sampler[List[int]]):
         #print('\n0-',batch_size)
         #print(next(self.sampler))
         #print(isinstance(self.sampler, Iterable))
-        num = random.choice([1,1,2,3,4])
+        num = random.choice([1,1,1,2,3,4])
         buckets = []
         for idx in self.sampler:
             buckets.append(idx)
             if len(buckets) == num :
                 batch.append(buckets)
-                num = random.choice([1,1,2,3,4])
+                num = random.choice([1,1,1,2,3,4])
                 buckets = []
             if len(batch) == self.batch_size:
                 yield batch
