@@ -25,7 +25,7 @@ class Image_Augmentation():
         # Calculate dimensions of proposed expanded (zoomed-out) image
         original_h = image.size(1)
         original_w = image.size(2)
-        max_scale = 1.3
+        max_scale = 1.5
         scale = random.uniform(1, max_scale)
         new_h = int(scale * original_h)
         new_w = int(scale * original_w)
@@ -222,7 +222,7 @@ class Image_Augmentation():
 
             width, height = (mosaic_mask[counter][2]-mosaic_mask[counter][0]),(mosaic_mask[counter][3]-mosaic_mask[counter][1])
             aspect_ratio_src = img.height/img.width
-            min_ratio,max_ratio = aspect_ratio_src - 0.5 , aspect_ratio_src+0.5
+            min_ratio,max_ratio = aspect_ratio_src/2 , aspect_ratio_src*1.5
             
             aspect_ratio_tar = height/width
             offset_x = 0
@@ -311,8 +311,8 @@ class Image_Augmentation():
             new_image = FT.to_pil_image(new_image)
 
             # Flip image with a 50% chance
-            #if random.random() < 0.5:
-            #    new_image, new_boxes = self.flip_od(new_image, new_boxes)
+            if random.random() < 0.5:
+                new_image, new_boxes = self.flip_od(new_image, new_boxes)
                 
             #new_image, new_boxes, new_labels = self.mosaic_mix(new_image,new_boxes,new_labels)
 
