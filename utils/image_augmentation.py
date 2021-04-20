@@ -25,7 +25,7 @@ class Image_Augmentation():
         # Calculate dimensions of proposed expanded (zoomed-out) image
         original_h = image.size(1)
         original_w = image.size(2)
-        max_scale = 1.5
+        max_scale = 2
         scale = random.uniform(1, max_scale)
         new_h = int(scale * original_h)
         new_w = int(scale * original_w)
@@ -222,7 +222,7 @@ class Image_Augmentation():
 
             width, height = (mosaic_mask[counter][2]-mosaic_mask[counter][0]),(mosaic_mask[counter][3]-mosaic_mask[counter][1])
             aspect_ratio_src = img.height/img.width
-            min_ratio,max_ratio = aspect_ratio_src/2 , aspect_ratio_src*1.5
+            min_ratio,max_ratio = aspect_ratio_src*0.5 , aspect_ratio_src*2
             
             aspect_ratio_tar = height/width
             offset_x = 0
@@ -267,7 +267,7 @@ class Image_Augmentation():
         new_img = Image.fromarray(background.astype(np.uint8))         
         new_data = [new_img,new_labels]
         return new_data
-    def transform_od(self,image, boxes, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = 'train'):
+    def transform_od(self,image, boxes, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = 'train',expand = True):
         """
         Apply the transformations above.
 
@@ -300,7 +300,7 @@ class Image_Augmentation():
             
             # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
             # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
-            if random.random() < 0.5:
+            if random.random() < 0.5 and expand==True:
                 new_image, new_boxes = self.expand_od(new_image, boxes, filler=mean)
 
             # Randomly crop image (zoom in)

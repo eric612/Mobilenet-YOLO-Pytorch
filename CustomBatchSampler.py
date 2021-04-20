@@ -44,23 +44,23 @@ class GreedyBatchSampler(Sampler[List[int]]):
             mosaic_array.append(random.choice([1,2,4]))
         return sum(self.mosaic_array)
     '''
-    def get_random(self):
-        r = random.randint(0, self.batch_size)
-        batch_size = self.batch_size +(3*r)
-        return r,batch_size
+    def get_random(self,sample):
+        if random.random() < 0.5:
+            num = random.choice(sample)
+        else:
+            num = 1
+        return num
     def __iter__(self):
         batch = []
-        #r,batch_size = self.get_random()
-        #print('\n0-',batch_size)
-        #print(next(self.sampler))
-        #print(isinstance(self.sampler, Iterable))
-        num = random.choice([1,1,1,2,3,4])
+        sample = [2,3,4]
+        num = self.get_random(sample)
+        
         buckets = []
         for idx in self.sampler:
             buckets.append(idx)
             if len(buckets) == num :
                 batch.append(buckets)
-                num = random.choice([1,1,1,2,3,4])
+                num = self.get_random(sample)
                 buckets = []
             if len(batch) == self.batch_size:
                 yield batch

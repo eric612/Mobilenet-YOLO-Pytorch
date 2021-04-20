@@ -31,13 +31,11 @@ seq = iaa.Sequential([
         [
             #sometimes(iaa.Superpixels(p_replace=(0, 1.0), n_segments=(20, 200))), # convert images into their superpixel representation
             iaa.OneOf([
-                iaa.GaussianBlur((0, 2.0)), # blur images with a sigma between 0 and 3.0
-                iaa.AverageBlur(k=(2, 5)), # blur image using local means with kernel sizes between 2 and 7
-                iaa.MedianBlur(k=(3, 7)), # blur image using local medians with kernel sizes between 2 and 7
+                iaa.GaussianBlur((0, 1.0)), # blur images with a sigma between 0 and 3.0
+                iaa.MedianBlur(k=(3,5)), # blur image using local medians with kernel sizes between 2 and 7
             ]),
-            iaa.Sharpen(alpha=(0, 0.3), lightness=(0.8, 1.2)), # sharpen images
-            iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05*255), per_channel=0.5), # add gaussian noise to images
-            iaa.Dropout((0.00, 0.01), per_channel=0.1), # randomly remove up to 10% of the pixels
+            iaa.Sharpen(alpha=(0, 0.1), lightness=(0.9, 1.1)), # sharpen images
+            iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.03*255), per_channel=0.3), # add gaussian noise to images
         ],
         random_order=True
     ))
@@ -73,7 +71,7 @@ class ImageFolderLMDB(data.Dataset):
         self.batch_size = batch_size
         self.count = 0
         
-    def get_single_image(self,index):
+    def get_single_image(self,index,expand=False):
     
         img, target = None, None
         env = self.env
@@ -110,7 +108,7 @@ class ImageFolderLMDB(data.Dataset):
         img = seq(image=img)  # done by the library
         image = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
         
-        new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = self.phase)
+        new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = self.phase,expand = expand)
 
         #self.show_image(new_img,new_boxes,new_labels)
 
@@ -135,11 +133,14 @@ class ImageFolderLMDB(data.Dataset):
         if type(index) == list:
 
             group = []
-            for idx in index:
-                img,tar = self.get_single_image(idx)
-                group.append([img,tar])   
             s = len(index)
+            
+            for idx in index:
+                img,tar = self.get_single_image(idx,expand=False)
+                group.append([img,tar])   
+            
             if s == 1 :
+                #self.show_image(img,tar[...,1:5],tar[...,0],convert=True)
                 return group[0][0],group[0][1],1     
             else :
                 b = self.img_aug.Mosaic(group,[512,512])

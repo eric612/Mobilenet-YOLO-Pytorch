@@ -10,32 +10,16 @@ try:
     from torch.hub import load_state_dict_from_url
 except ImportError:
     from torch.utils.model_zoo import load_url as load_state_dict_from_url
-class Blending(nn.Module):
-    def __init__(self,channels):
-        super(Blending, self).__init__()
-        self.weights = torch.nn.Parameter(torch.zeros(channels, requires_grad = True))
-    def forward(self, x, y = None):
-        prod = torch.sigmoid(self.weights)
-        #print(prod)
-        prod = prod.repeat(x.size(0),x.size(2),x.size(3),1).to(device)  
-        prod = prod.permute(0, 3, 1, 2).contiguous()    
-        if y is not None :
-            out = (x+y)*prod + torch.sigmoid(x) + torch.sigmoid(y)
-        else :
-            out = x*prod + torch.sigmoid(x)
-        return out
+
 class BasicConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,depthwise=False,AlphaBlending=False):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,depthwise=False):
         super(BasicConv, self).__init__()
         if depthwise == False :
             self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, kernel_size//2, bias=False)
         else :
             self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, kernel_size//2, bias=False,groups = in_channels)
         self.bn = nn.BatchNorm2d(out_channels)
-        if AlphaBlending == True: 
-            self.activation = Blending(out_channels)
-        else :
-            self.activation = nn.ReLU()
+        self.activation = nn.LeakyReLU(0.1)
         self._initialize_weights()
 
     def forward(self, x):
@@ -58,29 +42,41 @@ class BasicConv(nn.Module):
                     init.constant_(m.bias, 0)   
           
 class Upsample(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self):
         super(Upsample, self).__init__()
 
         self.upsample = nn.Sequential(
-            BasicConv(in_channels, out_channels, 1),
+            #BasicConv(in_channels, out_channels, 1),
             nn.Upsample(scale_factor=2, mode='nearest')
         )
 
     def forward(self, x,):
         x = self.upsample(x)
         return x
+def PartAdd(x,y):
+    if x.size(1) == y.size(1):
+        return x+y
+    len = min(x.size(1),y.size(1))
+    new_1 = x[:,:len,...] + y[:,:len,...]
+    if y.size(1) > x.size(1):
+        new_2 = y[:,len:,...]
+    else:
+        new_2 = x[:,len:,...]
+    new = torch.cat((new_1,new_2),1)
+
+    return new
 def DepthwiseConvolution(in_filters,out_filters):
     m = nn.Sequential(
         BasicConv(in_filters, in_filters, 3,depthwise=True),
         BasicConv(in_filters, in_filters, 1),
-        BasicConv(in_filters, out_filters, 1 , AlphaBlending = False),
+        BasicConv(in_filters, out_filters, 1 ),
     )
     return m
 def yolo_head(filters_list, in_filters):
     m = nn.Sequential(
         BasicConv(in_filters, in_filters, 3,depthwise=True),
         BasicConv(in_filters, in_filters, 1),
-        BasicConv(in_filters, filters_list[0], 1,AlphaBlending=False),
+        BasicConv(in_filters, filters_list[0], 1),
         nn.Conv2d(filters_list[0], filters_list[1], 1),
     )
     return m
@@ -90,9 +86,8 @@ class Connect(nn.Module):
 
         self.conv = nn.Sequential(
             BasicConv(channels, channels, 3,depthwise=True),
-            BasicConv(channels, channels, 1 , AlphaBlending = False),
+            BasicConv(channels, channels, 1 ),
         )
-        self.blending = Blending(channels)
     def forward(self, x,):        
         x2 = self.conv(x)
         x = torch.add(x,x2)
@@ -106,17 +101,16 @@ class yolo(nn.Module):
         model_url = 'https://raw.githubusercontent.com/d-li14/mobilenetv2.pytorch/master/pretrained/mobilenetv2-c5e733a8.pth'
         self.backbone = mobilenetv2(model_url)
 
-        self.conv_for_S32 = BasicConv(1280,512,1,AlphaBlending=True)
+        self.conv_for_S32 = BasicConv(1280,512,1)
         #print(num_anchors * (5 + num_classes))
         self.connect_for_S32 = Connect(512)
         self.yolo_headS32 = yolo_head([1024, self.num_anchors * (5 + self.num_classes)],512)
         
         
-        self.upsample = Upsample(512,256)
-        self.conv_for_S16 = DepthwiseConvolution(96,256)
-        self.connect_for_S16 = Connect(256)
-        self.yolo_headS16 = yolo_head([512, self.num_anchors * (5 + self.num_classes)],256)
-        self.blending = Blending(256)
+        self.upsample = Upsample()
+        self.conv_for_S16 = DepthwiseConvolution(96,192)
+        self.connect_for_S16 = Connect(512)
+        self.yolo_headS16 = yolo_head([512, self.num_anchors * (5 + self.num_classes)],512)
         self.yolo_losses = []
         for i in range(2):
             self.yolo_losses.append(YOLOLoss(config["yolo"]["anchors"],config["yolo"]["mask"][i] \
@@ -154,7 +148,9 @@ class yolo(nn.Module):
         S32_Upsample = self.upsample(S32)
         S16 = self.conv_for_S16(feature1)
         #S16 = self.blending(S16,S32_Upsample)
-        S16 = torch.add(S16,S32_Upsample)
+        S16 = PartAdd(S16,S32_Upsample)
+        #print(S16.shape)
+        #S16 = torch.add(S16,S32_Upsample)
         S16 = self.connect_for_S16(S16)
         out1 = self.yolo_headS16(S16)
         
