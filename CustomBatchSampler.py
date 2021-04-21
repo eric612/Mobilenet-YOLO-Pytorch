@@ -52,7 +52,7 @@ class GreedyBatchSampler(Sampler[List[int]]):
         return num
     def __iter__(self):
         batch = []
-        sample = [2,3,4]
+        sample = [1,4]
         num = self.get_random(sample)
         
         buckets = []

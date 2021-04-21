@@ -132,38 +132,38 @@ class YOLOLoss(nn.Module):
             for t in range(len(target[b])):                                               
                 gi = int(gxgy[t,0])
                 gj = int(gxgy[t,1])                
-                #anch_ious_this = anch_ious[self.mask] 
-                #iou_thresh_list = (anch_ious_this>0.213).tolist()
-                #bn = self.num_anchors + 1 
+                anch_ious_this = anch_ious[t][self.mask] 
+                iou_thresh_list = (anch_ious_this>0.5).tolist()
+                bn = self.num_anchors + 1 
                 if best_n[t] in self.mask :
                     bn = self.mask.index(best_n[t])  
-                    k = bn 
-                #for k in range(self.num_mask):
-                    #if k == bn or iou_thresh_list[k] :
-                    count+= 1                
-                    cls_index = int(gt[t,0])
-                    
-                    targets_parts[b,k,gj,gi] = 1 
-                    targets_weight_parts[b,k,gj,gi] = 1 
-                    conf = output[b,k,gj,gi,0].item()
-                    obj = obj + conf
-                    no_obj = no_obj - conf
-                    gt_box_xy = gt_boxes[t].unsqueeze(0)
-                    pred = pred_boxes[b, k, gj, gi].unsqueeze(0)
+                    #k = bn 
+                for k in range(self.num_mask):
+                    if k == bn or iou_thresh_list[k] :
+                        count+= 1                
+                        cls_index = int(gt[t,0])
+                        
+                        targets_parts[b,k,gj,gi] = 1 
+                        targets_weight_parts[b,k,gj,gi] = 1 
+                        conf = output[b,k,gj,gi,0].item()
+                        obj = obj + conf
+                        no_obj = no_obj - conf
+                        gt_box_xy = gt_boxes[t].unsqueeze(0)
+                        pred = pred_boxes[b, k, gj, gi].unsqueeze(0)
 
-                    giou,iou = self.box_ciou(gt_box_xy,pred)
+                        giou,iou = self.box_ciou(gt_box_xy,pred)
 
-                    iou_loss = torch.cat((iou_loss,giou.to(device)))
-                    area = 2.0 - self.get_area(gt_box_xy)
-                    
-                    iou_weight = torch.cat((iou_weight,(area).to(device)))
-                    if iou>ignore_threshold :
-                        recall = recall + 1                         
-                    ious = ious + iou.item()
-                    cls_tensor = targets[b, k, gj, gi,1:]
-                    cls_weight = targets_weight[b, k, gj, gi,1:]
-                    self.class_loss(cls_tensor,cls_weight,cls_index)
-                    cls_score = cls_score + output[b,k,gj,gi,1+cls_index].item()
+                        iou_loss = torch.cat((iou_loss,giou.to(device)))
+                        area = 2.0 - self.get_area(gt_box_xy)
+                        
+                        iou_weight = torch.cat((iou_weight,(area).to(device)))
+                        if iou>ignore_threshold :
+                            recall = recall + 1                         
+                        ious = ious + iou.item()
+                        cls_tensor = targets[b, k, gj, gi,1:]
+                        cls_weight = targets_weight[b, k, gj, gi,1:]
+                        self.class_loss(cls_tensor,cls_weight,cls_index)
+                        cls_score = cls_score + output[b,k,gj,gi,1+cls_index].item()
         if count > 0:                
             obj_avg =  obj/count 
             cls_avg =  cls_score/count

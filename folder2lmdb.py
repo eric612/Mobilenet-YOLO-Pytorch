@@ -136,14 +136,14 @@ class ImageFolderLMDB(data.Dataset):
             s = len(index)
             
             for idx in index:
-                img,tar = self.get_single_image(idx,expand=False)
+                img,tar = self.get_single_image(idx,s==1)
                 group.append([img,tar])   
             
             if s == 1 :
                 #self.show_image(img,tar[...,1:5],tar[...,0],convert=True)
                 return group[0][0],group[0][1],1     
             else :
-                b = self.img_aug.Mosaic(group,[512,512])
+                b = self.img_aug.Mosaic(group,[800,800])
                 #self.show_image(b[0],b[1][...,1:5].clone(),b[1][...,0].clone(),convert=True)
                 return b[0],b[1],len(index)
         else:

@@ -108,8 +108,8 @@ class yolo(nn.Module):
         
         
         self.upsample = Upsample()
-        self.conv_for_S16 = DepthwiseConvolution(96,192)
-        self.connect_for_S16 = Connect(512)
+        self.conv_for_S16 = DepthwiseConvolution(96,256)
+        self.connect_for_S16 = Connect(256)
         self.yolo_headS16 = yolo_head([512, self.num_anchors * (5 + self.num_classes)],512)
         self.yolo_losses = []
         for i in range(2):
@@ -147,11 +147,12 @@ class yolo(nn.Module):
         out0 = self.yolo_headS32(S32) 
         S32_Upsample = self.upsample(S32)
         S16 = self.conv_for_S16(feature1)
+        S16 = self.connect_for_S16(S16)
         #S16 = self.blending(S16,S32_Upsample)
         S16 = PartAdd(S16,S32_Upsample)
         #print(S16.shape)
         #S16 = torch.add(S16,S32_Upsample)
-        S16 = self.connect_for_S16(S16)
+       
         out1 = self.yolo_headS16(S16)
         
         output = self.yolo_losses[0](out0,targets),self.yolo_losses[1](out1,targets)

@@ -25,7 +25,7 @@ class Image_Augmentation():
         # Calculate dimensions of proposed expanded (zoomed-out) image
         original_h = image.size(1)
         original_w = image.size(2)
-        max_scale = 2
+        max_scale = 1.5
         scale = random.uniform(1, max_scale)
         new_h = int(scale * original_h)
         new_w = int(scale * original_w)
