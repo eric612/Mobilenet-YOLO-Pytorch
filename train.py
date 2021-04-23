@@ -21,7 +21,7 @@ import torchvision.models as models
 import folder2lmdb
 import CustomBatchSampler
 import cv2
-from models.voc.mbv2_yolo import yolo
+from models.voc.mbv3_yolo import yolo
 from models.voc.yolo_loss import *
 from utils import Bar, Logger, AverageMeter
 from utils.eval_mAP import *
@@ -32,25 +32,25 @@ pp = PrettyPrinter()
 parser = argparse.ArgumentParser(description='PyTorch Training')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
-parser.add_argument('--weight-decay', '--wd', default=4e-6, type=float,
+parser.add_argument('--weight-decay', '--wd', default=4e-5, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--lr', '--learning-rate', default=0.0005, type=float,
                     metavar='LR', help='initial learning rate') 
-parser.add_argument('--warm-up', '--warmup',  default=[], type=float,
+parser.add_argument('--warm-up', '--warmup',  default=[1,2], type=float,
                     metavar='warmup', help='warm up learning rate')                    
-parser.add_argument('--epochs', default=450, type=int, metavar='N',
+parser.add_argument('--epochs', default=500, type=int, metavar='N',
                     help='number of total epochs to run')
-parser.add_argument('--schedule', type=int, nargs='+', default=[175,250,325,400],
+parser.add_argument('--schedule', type=int, nargs='+', default=[175,250,325,400,450],
                         help='Decrease learning rate at these epochs.')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('-c', '--checkpoint', default='checkpoint', type=str, metavar='PATH',
                     help='path to save checkpoint (default: checkpoint)')
-parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-                    help='evaluate model on validation set')
+#parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
+#                    help='evaluate model on validation set')
 parser.add_argument('-o', '--export', dest='export', default='checkpoint', type=str, metavar='PATH',
                     help='path to export checkpoint (default: checkpoint)')                   
-#parser.add_argument('-e', '--evaluate', type=bool, default=False, help='Evaluate mAP? default=False')   
+parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true', help='Evaluate mAP? default=False')   
 
 def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
@@ -134,11 +134,11 @@ def main():
     #ls = len(args.warm_up)
     for epoch in range(start_epoch, args.epochs):
         if epoch in args.warm_up:
-            adjust_learning_rate(optimizer, 0.1)
+            adjust_learning_rate(optimizer, 0.5)
     for epoch in range(start_epoch, args.epochs):
         # train for one epoch   
         if epoch in args.warm_up: 
-            adjust_learning_rate(optimizer, 10)
+            adjust_learning_rate(optimizer, 2)
         if epoch in args.schedule:
             #load_best_checkpoint(model=model, save_path=args.save_path)
            

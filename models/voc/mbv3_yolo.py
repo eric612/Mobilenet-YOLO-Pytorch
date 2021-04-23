@@ -5,6 +5,8 @@ import torch.nn as nn
 from models.voc.mobilenetv3 import MobileNetV3
 from models.voc.yolo_loss import *
 from torch.nn import init
+from utils.box import nms
+
 import yaml
 try:
     from torch.hub import load_state_dict_from_url
@@ -19,7 +21,7 @@ class BasicConv(nn.Module):
         else :
             self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, kernel_size//2, bias=False,groups = in_channels)
         self.bn = nn.BatchNorm2d(out_channels)
-        self.activation = nn.ReLU()
+        self.activation = nn.LeakyReLU(0.1)
         self._initialize_weights()
 
     def forward(self, x):
@@ -52,11 +54,11 @@ class Upsample(nn.Module):
     def forward(self, x,):
         x = self.upsample(x)
         return x
-def DepthwiseConvolution(in_filters,out_filters):
+def DepthwiseConvolution(in_filters):
     m = nn.Sequential(
         BasicConv(in_filters, in_filters, 3,depthwise=True),
         BasicConv(in_filters, in_filters, 1),
-        BasicConv(in_filters, out_filters, 1),
+        #BasicConv(in_filters, out_filters, 1),
     )
     return m
 def yolo_head(filters_list, in_filters):
@@ -80,6 +82,18 @@ class Connect(nn.Module):
         x2 = self.conv(x)
         x = torch.add(x,x2)
         return x
+def PartAdd(x,y):
+    if x.size(1) == y.size(1):
+        return x+y
+    len = min(x.size(1),y.size(1))
+    new_1 = x[:,:len,...] + y[:,:len,...]
+    if y.size(1) > x.size(1):
+        new_2 = y[:,len:,...]
+    else:
+        new_2 = x[:,len:,...]
+    new = torch.cat((new_1,new_2),1)
+
+    return new        
 class yolo(nn.Module):
     def __init__(self,config):
         super(yolo, self).__init__()
@@ -96,7 +110,7 @@ class yolo(nn.Module):
         
         
         self.upsample = Upsample(512,256)
-        self.conv_for_S16 = DepthwiseConvolution(160,256)
+        self.conv_for_S16 = DepthwiseConvolution(160)
         self.connect_for_S16 = Connect(256)
         self.yolo_headS16 = yolo_head([512, self.num_anchors * (5 + self.num_classes)],256)
 
@@ -105,27 +119,7 @@ class yolo(nn.Module):
             self.yolo_losses.append(YOLOLoss(config["yolo"]["anchors"],config["yolo"]["mask"][i] \
                 ,self.num_classes,[config["img_w"],config["img_h"]],config["yolo"]["iou_thres"][i]))
 
-    def nms(self,preds) :
-        nms_preds = list()
-        assert len(preds) == 2 #only do two layers yolo 
-        assert len(preds[0]) == len(preds[1])
-        bs = len(preds[0])
-        for b in range(bs):
-            pred_per_img = torch.cat((preds[0][b],preds[1][b]),0)
-            pred_boxes = torch.zeros(0,7, requires_grad=False).to(device)
-            if pred_per_img.size(0):
-                for i in range(self.num_classes) :                       
-                    mask = (pred_per_img[...,6] == i)                    
-                    pred_this_cls =  pred_per_img[mask]
-                    
-                    if pred_this_cls.size(0):
-                        #print(pred_this_cls.shape,pred_per_img.shape)
-                        boxes = pred_this_cls[...,:4]
-                        scores = pred_this_cls[...,5]*pred_this_cls[...,4]
-                        index = torchvision.ops.nms(boxes,scores,0.45)            
-                        pred_boxes = torch.cat((pred_boxes,pred_this_cls[index]),0)
-            nms_preds.append(pred_boxes)
-        return nms_preds        
+    
     def forward(self, x, targets=None):
 
         for i in range(2):
@@ -136,13 +130,14 @@ class yolo(nn.Module):
         out0 = self.yolo_headS32(S32) 
         S32_Upsample = self.upsample(S32)
         S16 = self.conv_for_S16(feature1)
-        S16 = torch.add(S16,S32_Upsample)
+        S16 = PartAdd(S16,S32_Upsample)
+        #S16 = torch.add(S16,S32_Upsample)
         S16 = self.connect_for_S16(S16)
         out1 = self.yolo_headS16(S16)
         
         output = self.yolo_losses[0](out0,targets),self.yolo_losses[1](out1,targets)
         if targets == None :
-            output = self.nms(output)
+            output = nms(output,self.num_classes)
 
         
         return output

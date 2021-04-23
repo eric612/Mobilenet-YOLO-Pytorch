@@ -10,7 +10,7 @@ train_img_size:
 yolo:
   num_classes: 20
   num_anchors: 3
-  iou_thres: [0.7, 0.6]
+  iou_thres: [0.7, 0.5]
   anchors:
   - [143, 265]
   - [153, 121]

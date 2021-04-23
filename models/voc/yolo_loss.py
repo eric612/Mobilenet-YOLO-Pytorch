@@ -216,7 +216,9 @@ class YOLOLoss(nn.Module):
             loss = self.weighted_mse_loss(output , target , weights)
             iou_target = torch.ones_like(iou_losses)
             #iou_loss= torch.sum(iou_target-iou_losses)
-            iou_loss = self.weighted_mse_loss(iou_losses,iou_target,iou_weights)/iou_losses.numel()
+            iou_loss = torch.Tensor([0]) 
+            if iou_losses.size(0)>0:
+                iou_loss = self.weighted_mse_loss(iou_losses,iou_target,iou_weights)/iou_losses.numel()
             #iou_loss = self.mse_loss(iou_losses,iou_target)/iou_losses.numel()
             #print(iou_loss)
             #iou_loss = torch.Tensor(iou_loss)
