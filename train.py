@@ -32,11 +32,11 @@ pp = PrettyPrinter()
 parser = argparse.ArgumentParser(description='PyTorch Training')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
-parser.add_argument('--weight-decay', '--wd', default=4e-5, type=float,
+parser.add_argument('--weight-decay', '--wd', default=1e-6, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--lr', '--learning-rate', default=0.0005, type=float,
                     metavar='LR', help='initial learning rate') 
-parser.add_argument('--warm-up', '--warmup',  default=[1,2], type=float,
+parser.add_argument('--warm-up', '--warmup',  default=[1], type=float,
                     metavar='warmup', help='warm up learning rate')                    
 parser.add_argument('--epochs', default=500, type=int, metavar='N',
                     help='number of total epochs to run')
