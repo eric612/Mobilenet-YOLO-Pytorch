@@ -1,0 +1,5 @@
+{
+    "lr":{"_type":"uniform","_value":[0.0004, 0.0006]},
+    "iou_thresh_1":{"_type":"uniform","_value":[0.55, 0.85]},
+    "iou_thresh_2":{"_type":"uniform","_value":[0.45, 0.75]}
+}

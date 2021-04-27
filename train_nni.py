@@ -28,44 +28,30 @@ from utils.eval_mAP import *
 from pprint import PrettyPrinter
 import yaml
 import numpy as np
+import nni
+from nni.utils import merge_parameter
+
 pp = PrettyPrinter()
-parser = argparse.ArgumentParser(description='PyTorch Training')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
-                    help='momentum')
-parser.add_argument('--weight-decay', '--wd', default=1e-6, type=float,
-                    metavar='W', help='weight decay (default: 1e-4)')
-parser.add_argument('--lr', '--learning-rate', default=0.0005, type=float,
-                    metavar='LR', help='initial learning rate') 
-parser.add_argument('--warm-up', '--warmup',  default=[1], type=float,
-                    metavar='warmup', help='warm up learning rate')                    
-parser.add_argument('--epochs', default=500, type=int, metavar='N',
-                    help='number of total epochs to run')
-parser.add_argument('--schedule', type=int, nargs='+', default=[175,250,325,400,450],
-                        help='Decrease learning rate at these epochs.')
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='path to latest checkpoint (default: none)')
-parser.add_argument('-c', '--checkpoint', default='checkpoint', type=str, metavar='PATH',
-                    help='path to save checkpoint (default: checkpoint)')
-#parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-#                    help='evaluate model on validation set')
-parser.add_argument('-o', '--export', dest='export', default='checkpoint', type=str, metavar='PATH',
-                    help='path to export checkpoint (default: checkpoint)')                   
-parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true', help='Evaluate mAP? default=False')   
+ 
 
 def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)         
     
-def main():
+def main(args):
 
     with open('models/voc/config.yaml', 'r') as f:
         config = yaml.load(f) 
     with open('data/voc_data.yaml', 'r') as f:
-        dataset_path = yaml.load(f)         
+        dataset_path = yaml.load(f)   
+    if args.iou_thresh_1 != None :
+        config["yolo"]["iou_thres"][0] = args.iou_thresh_1 
+    if args.iou_thresh_2 != None :
+        config["yolo"]["iou_thres"][1] = args.iou_thresh_2
     print(config)
     best_acc = 0  # best test accuracy
-    args = parser.parse_args()
+    #args = parser.parse_args()
     start_epoch = 0
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
@@ -102,7 +88,8 @@ def main():
     not_biases = list()
 
     params = model.parameters()
-    optimizer = optim.AdamW(params=params,lr = args.lr)   
+    optimizer = optim.AdamW(params=params,lr = args.lr)  
+    #print('args_lr:',args['lr'])
     if not os.path.exists(args.checkpoint):
         os.makedirs(args.checkpoint)    
     title = 'voc-training-process'
@@ -165,6 +152,7 @@ def main():
         
         if not log :
             test_acc = test(test_loader, model, optimizer, epoch , config)  
+            nni.report_intermediate_result(test_acc)
             logger.append([epoch + 1, train_loss , test_acc, time.time()-st,iou, optimizer.param_groups[0]['lr']])
             # save model
             is_best = test_acc > best_acc
@@ -178,7 +166,7 @@ def main():
                     'conf' : model.yolo_losses[0].val_conf,
                 }, is_best,model,config, checkpoint=args.checkpoint,export_path = args.export)
             
-        
+    nni.report_final_result(best_acc)
 def train(train_loader, model, optimizer,epoch,sampler):
     model.train()
     bar = IncrementalBar('Training', max=len(sampler),width=12)
@@ -369,6 +357,46 @@ def adjust_learning_rate(optimizer, scale):
     """
     for param_group in optimizer.param_groups:
         param_group['lr'] = param_group['lr'] * scale
-    print("Change learning rate.\n The new LR is %f\n" % (optimizer.param_groups[0]['lr']))        
+    print("Change learning rate.\n The new LR is %f\n" % (optimizer.param_groups[0]['lr']))  
+    
+def get_params():
+    # Training settings
+    parser = argparse.ArgumentParser(description='PyTorch Training')
+    parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
+                        help='momentum')
+    parser.add_argument('--weight-decay', '--wd', default=4e-6, type=float,
+                        metavar='W', help='weight decay (default: 1e-4)')
+    parser.add_argument('--lr', '--learning-rate', default=0.0005, type=float,
+                        metavar='LR', help='initial learning rate') 
+    parser.add_argument('--warm-up', '--warmup',  default=[], type=float,
+                        metavar='warmup', help='warm up learning rate')                    
+    parser.add_argument('--epochs', default=10, type=int, metavar='N',
+                        help='number of total epochs to run')
+    parser.add_argument('--schedule', type=int, nargs='+', default=[175,250,325,400,450],
+                            help='Decrease learning rate at these epochs.')
+    parser.add_argument('--resume', default='', type=str, metavar='PATH',
+                        help='path to latest checkpoint (default: none)')
+    parser.add_argument('-c', '--checkpoint', default='checkpoint', type=str, metavar='PATH',
+                        help='path to save checkpoint (default: checkpoint)')
+    #parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
+    #                    help='evaluate model on validation set')
+    parser.add_argument('-o', '--export', dest='export', default='checkpoint', type=str, metavar='PATH',
+                        help='path to export checkpoint (default: checkpoint)')                   
+    parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true', help='Evaluate mAP? default=False')  
+
+    parser.add_argument('--iou_thresh_1',  default=None, type=float, help='ignore iou thresh layer 1')
+    parser.add_argument('--iou_thresh_2',  default=None, type=float, help='ignore iou thresh layer 2')
+    args = parser.parse_args()
+    return args    
+    
 if __name__ == '__main__':
-    main()
+    try:
+        # get parameters form tuner
+        tuner_params = nni.get_next_parameter()
+        #logger.debug(tuner_params)
+        params = merge_parameter(get_params(), tuner_params)
+        #print(params)
+        main(params)
+    except Exception as exception:
+        #logger.exception(exception)
+        raise
