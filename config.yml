@@ -2,7 +2,7 @@ authorName: default
 experimentName: example_yolo_pytorch
 trialConcurrency: 1
 maxExecDuration: 48h
-maxTrialNum: 15
+maxTrialNum: 20
 #choice: local, remote, pai
 trainingServicePlatform: local
 searchSpacePath: search_space.json

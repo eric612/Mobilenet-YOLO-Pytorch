@@ -11,7 +11,7 @@ from utils.iou import*
 
 class Image_Augmentation():
 
-    def expand_od(self,image, boxes, filler):
+    def expand_od(self,image, boxes, filler,expand_scale):
         """
         Perform a zooming out operation by placing the image in a larger canvas of filler material.
 
@@ -25,7 +25,7 @@ class Image_Augmentation():
         # Calculate dimensions of proposed expanded (zoomed-out) image
         original_h = image.size(1)
         original_w = image.size(2)
-        max_scale = 1.5
+        max_scale = expand_scale
         scale = random.uniform(1, max_scale)
         new_h = int(scale * original_h)
         new_w = int(scale * original_w)
@@ -267,7 +267,7 @@ class Image_Augmentation():
         new_img = Image.fromarray(background.astype(np.uint8))         
         new_data = [new_img,new_labels]
         return new_data
-    def transform_od(self,image, boxes, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = 'train',expand = True):
+    def transform_od(self,image, boxes, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = 'train',expand = True,expand_scale = 1.5):
         """
         Apply the transformations above.
 
@@ -301,7 +301,7 @@ class Image_Augmentation():
             # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
             # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
             if random.random() < 0.5 and expand==True:
-                new_image, new_boxes = self.expand_od(new_image, boxes, filler=mean)
+                new_image, new_boxes = self.expand_od(new_image, boxes, filler=mean,expand_scale=expand_scale)
 
             # Randomly crop image (zoom in)
             new_image, new_boxes, new_labels, new_difficulties = self.random_crop_od(new_image, new_boxes, new_labels,

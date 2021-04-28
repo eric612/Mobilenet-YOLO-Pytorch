@@ -115,7 +115,7 @@ class yolo(nn.Module):
         self.yolo_losses = []
         for i in range(2):
             self.yolo_losses.append(YOLOLoss(config["yolo"]["anchors"],config["yolo"]["mask"][i] \
-                ,self.num_classes,[config["img_w"],config["img_h"]],config["yolo"]["iou_thres"][i]))
+                ,self.num_classes,[config["img_w"],config["img_h"]],config["yolo"]["ignore_thresh"][i],config["yolo"]["iou_thresh"]))
        
     def forward(self, x, targets=None):
 

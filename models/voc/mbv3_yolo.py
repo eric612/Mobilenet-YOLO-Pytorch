@@ -43,11 +43,11 @@ class BasicConv(nn.Module):
                 if m.bias is not None:
                     init.constant_(m.bias, 0)      
 class Upsample(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self):
         super(Upsample, self).__init__()
 
         self.upsample = nn.Sequential(
-            BasicConv(in_channels, out_channels, 1),
+            #BasicConv(in_channels, out_channels, 1),
             nn.Upsample(scale_factor=2, mode='nearest')
         )
 
@@ -109,15 +109,15 @@ class yolo(nn.Module):
         self.yolo_headS32 = yolo_head([1024, self.num_anchors * (5 + self.num_classes)],512)
         
         
-        self.upsample = Upsample(512,256)
+        self.upsample = Upsample()
         self.conv_for_S16 = DepthwiseConvolution(160)
-        self.connect_for_S16 = Connect(256)
-        self.yolo_headS16 = yolo_head([512, self.num_anchors * (5 + self.num_classes)],256)
+        self.connect_for_S16 = Connect(160)
+        self.yolo_headS16 = yolo_head([512, self.num_anchors * (5 + self.num_classes)],512)
 
         self.yolo_losses = []
         for i in range(2):
             self.yolo_losses.append(YOLOLoss(config["yolo"]["anchors"],config["yolo"]["mask"][i] \
-                ,self.num_classes,[config["img_w"],config["img_h"]],config["yolo"]["iou_thres"][i]))
+                ,self.num_classes,[config["img_w"],config["img_h"]],config["yolo"]["ignore_thresh"][i],config["yolo"]["iou_thresh"]))
 
     
     def forward(self, x, targets=None):
@@ -130,9 +130,10 @@ class yolo(nn.Module):
         out0 = self.yolo_headS32(S32) 
         S32_Upsample = self.upsample(S32)
         S16 = self.conv_for_S16(feature1)
+        S16 = self.connect_for_S16(S16)
         S16 = PartAdd(S16,S32_Upsample)
         #S16 = torch.add(S16,S32_Upsample)
-        S16 = self.connect_for_S16(S16)
+        
         out1 = self.yolo_headS16(S16)
         
         output = self.yolo_losses[0](out0,targets),self.yolo_losses[1](out1,targets)

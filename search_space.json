@@ -1,5 +1,7 @@
 {
-    "lr":{"_type":"uniform","_value":[0.0004, 0.0006]},
-    "iou_thresh_1":{"_type":"uniform","_value":[0.55, 0.85]},
-    "iou_thresh_2":{"_type":"uniform","_value":[0.45, 0.75]}
+    "learning_rate":{"_type":"uniform","_value":[0.0003, 0.0005]},
+    "ignore_thresh_1":{"_type":"uniform","_value":[0.55, 0.75]},
+    "ignore_thresh_2":{"_type":"uniform","_value":[0.45, 0.65]},
+    "iou_thresh":{"_type":"uniform","_value":[0.39, 0.61]},
+    "expand_scale":{"_type":"uniform","_value":[1, 3]}    
 }

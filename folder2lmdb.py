@@ -54,7 +54,7 @@ CLASSES = (#'__background__',
            'sheep', 'sofa', 'train', 'tvmonitor')
         
 class ImageFolderLMDB(data.Dataset):
-    def __init__(self, db_path,batch_size,transform_size = [[352,352]], phase=None):
+    def __init__(self, db_path,batch_size,transform_size = [[352,352]], phase=None,expand_scale=1.5):
         self.db_path = db_path
         self.env = lmdb.open(db_path, subdir=os.path.isdir(db_path),
                              readonly=True, lock=False,
@@ -70,8 +70,9 @@ class ImageFolderLMDB(data.Dataset):
         self.img_aug = Image_Augmentation()
         self.batch_size = batch_size
         self.count = 0
+        self.expand_scale = expand_scale
         
-    def get_single_image(self,index,expand=False):
+    def get_single_image(self,index,expand=False,expand_scale=1.5):
     
         img, target = None, None
         env = self.env
@@ -108,7 +109,7 @@ class ImageFolderLMDB(data.Dataset):
         img = seq(image=img)  # done by the library
         image = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
         
-        new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = self.phase,expand = expand)
+        new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = self.phase,expand = expand,expand_scale = self.expand_scale)
 
         #self.show_image(new_img,new_boxes,new_labels)
 

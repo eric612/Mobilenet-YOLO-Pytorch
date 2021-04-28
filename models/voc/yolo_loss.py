@@ -30,7 +30,7 @@ class YOLOLoss(nn.Module):
             # https://zlatankr.github.io/posts/2017/03/06/mle-gradient-descent
             grad_input = grad_output.clone()
             return grad_input
-    def __init__(self, anchors, mask, num_classes, img_size,ignore_threshold,val_conf = 0.1):
+    def __init__(self, anchors, mask, num_classes, img_size,ignore_threshold,iou_thresh,val_conf = 0.1,):
         super(YOLOLoss, self).__init__()
         self.anchors = anchors
         self.mask = mask;
@@ -46,6 +46,7 @@ class YOLOLoss(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.bce_loss = nn.BCELoss()
         self.label_smooth_eps = 0.1
+        self.iou_thresh = iou_thresh
     
     def weighted_mse_loss(self,input, target, weights):
         out = (input - target)**2      
@@ -71,7 +72,7 @@ class YOLOLoss(nn.Module):
         anchor_wh = torch.cat((anchor_w,anchor_h),4)
         return grid_xy,anchor_wh
         
-    def get_target(self, target,input, anchors, in_w, in_h, ignore_threshold):
+    def get_target(self, target,input, anchors, in_w, in_h, ignore_threshold,iou_thresh=0.5):
     
         bs = input.size(0)
         this_anchors = np.array(anchors)[self.mask]
@@ -133,13 +134,13 @@ class YOLOLoss(nn.Module):
                 gi = int(gxgy[t,0])
                 gj = int(gxgy[t,1])                
                 anch_ious_this = anch_ious[t][self.mask] 
-                iou_thresh_list = (anch_ious_this>0.5).tolist()
+                iou_thresh_list = (anch_ious_this>iou_thresh).tolist()
                 bn = self.num_anchors + 1 
                 if best_n[t] in self.mask :
                     bn = self.mask.index(best_n[t])  
                     #k = bn 
                 for k in range(self.num_mask):
-                    if k == bn or iou_thresh_list[k] :
+                    if k == bn or iou_thresh_list[k] == True :
                         count+= 1                
                         cls_index = int(gt[t,0])
                         
@@ -212,7 +213,7 @@ class YOLOLoss(nn.Module):
 
         if targets is not None:
             #print(self.ignore_threshold)
-            target,weights,output,recall,avg_iou,obj,no_obj,cls_score,count,iou_losses,iou_weights = self.get_target(targets,input, scaled_anchors,in_w, in_h,self.ignore_threshold)
+            target,weights,output,recall,avg_iou,obj,no_obj,cls_score,count,iou_losses,iou_weights = self.get_target(targets,input, scaled_anchors,in_w, in_h,self.ignore_threshold,self.iou_thresh)
             loss = self.weighted_mse_loss(output , target , weights)
             iou_target = torch.ones_like(iou_losses)
             #iou_loss= torch.sum(iou_target-iou_losses)

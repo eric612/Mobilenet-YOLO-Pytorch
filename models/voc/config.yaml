@@ -7,10 +7,12 @@ train_img_size:
   - [288, 288]
   - [384, 384]
   - [416, 416]
+expand_scale: 1.7
 yolo:
   num_classes: 20
   num_anchors: 3
-  iou_thres: [0.7, 0.5]
+  ignore_thresh: [0.65, 0.52]
+  iou_thresh: 0.52
   anchors:
   - [143, 265]
   - [153, 121]
