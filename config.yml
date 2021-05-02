@@ -1,7 +1,7 @@
 authorName: default
 experimentName: example_yolo_pytorch
 trialConcurrency: 1
-maxExecDuration: 48h
+maxExecDuration: 5d
 maxTrialNum: 20
 #choice: local, remote, pai
 trainingServicePlatform: local
@@ -11,13 +11,13 @@ useAnnotation: false
 tuner:
   #choice: TPE, Random, Anneal, Evolution, BatchTuner, MetisTuner, GPTuner
   #SMAC (SMAC should be installed through nnictl)
-  builtinTunerName: TPE
+  builtinTunerName: MetisTuner
   classArgs:
     #choice: maximize, minimize
     optimize_mode: maximize
 
 trial:
-  command: python train.py
+  command: python train_nni.py
   codeDir: .
   gpuNum: 1
 localConfig:
