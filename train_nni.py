@@ -4,6 +4,7 @@ import random
 import shutil
 import time
 import warnings
+import numpy as np
 from progress.bar import (Bar, IncrementalBar)
 import torch
 import torch.nn as nn
@@ -27,12 +28,13 @@ from utils import Bar, Logger, AverageMeter
 from utils.eval_mAP import *
 from pprint import PrettyPrinter
 import yaml
-import numpy as np
+
 import nni
 from nni.utils import merge_parameter
 from nni.trial import get_sequence_id
+from nni.trial import get_trial_id
 pp = PrettyPrinter()
- 
+from torch.utils.tensorboard import SummaryWriter 
 
 def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
@@ -40,7 +42,8 @@ def seed_worker(worker_id):
     random.seed(worker_seed)         
     
 def main(args):
-
+    #print('NNI_OUTPUT_DIR',os.environ["NNI_OUTPUT_DIR"])
+    writer = SummaryWriter(os.environ["NNI_OUTPUT_DIR"]+'/tensorboard/')
     with open('models/voc/config.yaml', 'r') as f:
         config = yaml.load(f) 
     with open('data/voc_data.yaml', 'r') as f:
@@ -53,6 +56,10 @@ def main(args):
         config["yolo"]["iou_thresh"] = args.iou_thresh 
     if args.expand_scale != None :
         config["expand_scale"] = args.expand_scale 
+    if args.mosaic_num != None :
+        config["mosaic_num"] = args.mosaic_num 
+    if args.iou_weighting != None :
+        config["iou_weighting"] = args.iou_weighting         
     print(config)
     best_acc = 0  # best test accuracy
     #args = parser.parse_args()
@@ -77,7 +84,7 @@ def main(args):
     sampler = BatchSampler (
         torch.utils.data.sampler.RandomSampler(train_dataset),
         batch_size=config["batch_size"],
-        drop_last=False)
+        drop_last=False,sample=config["mosaic_num"])
     train_loader = torch.utils.data.DataLoader(
         train_dataset,batch_sampler = sampler, 
         num_workers=4, pin_memory=True,collate_fn=train_dataset.collate_fn,
@@ -86,7 +93,9 @@ def main(args):
         test_dataset, config["batch_size"], shuffle=False,
         num_workers=4, pin_memory=True,collate_fn=test_dataset.collate_fn) 
     model = yolo(config=config)
-
+    model_for_graph = yolo_graph(config=config)        
+    input = torch.randn(1, 3, 352, 352)
+    writer.add_graph(model_for_graph,input)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = model.cuda()
@@ -95,7 +104,8 @@ def main(args):
     not_biases = list()
 
     params = model.parameters()
-    optimizer = optim.AdamW(params=params,lr = args.learning_rate)  
+    print('\n','lr:',args.learning_rate,'weight_decay:',args.weight_decay)
+    optimizer = optim.AdamW(params=params,lr = args.learning_rate,weight_decay= args.weight_decay)  
     #print('args_lr:',args['lr'])
     if not os.path.exists(args.checkpoint):
         os.makedirs(args.checkpoint)    
@@ -130,6 +140,7 @@ def main(args):
         if epoch in args.warm_up:
             adjust_learning_rate(optimizer, 0.5)
     for epoch in range(start_epoch, args.epochs):
+               
         # train for one epoch   
         if epoch in args.warm_up: 
             adjust_learning_rate(optimizer, 2)
@@ -156,7 +167,8 @@ def main(args):
                     % (epoch, args.epochs, optimizer.param_groups[0]['lr']))
         
         train_loss,iou = train(train_loader, model, optimizer, epoch,sampler)
-        
+        writer.add_scalar('Loss/train', train_loss, epoch)
+        writer.add_scalar('iou/train', iou, epoch)
         if not log :
             test_acc = test(test_loader, model, optimizer, epoch , config)  
             nni.report_intermediate_result(test_acc)
@@ -172,6 +184,7 @@ def main(args):
                     'optimizer' : optimizer.state_dict(),
                     'conf' : model.yolo_losses[0].val_conf,
                 }, is_best,model,config, checkpoint=args.checkpoint,export_path = args.export)
+            writer.add_scalar('Accuracy/test', test_acc, epoch+ 1)
             
     nni.report_final_result(best_acc)
 def train(train_loader, model, optimizer,epoch,sampler):
@@ -250,6 +263,7 @@ def train(train_loader, model, optimizer,epoch,sampler):
 
         bar.next(total_num)
     bar.finish()
+    print('\n count:',count[0].avg,count[1].avg,'iou:',iou[0].avg,iou[1].avg,'obj:',obj[0].avg,obj[1].avg,'no_obj:',no_obj[0].avg,no_obj[1].avg,'cls:',cls_score[0].avg,cls_score[1].avg,'recall:',recall[0].avg,recall[1].avg)
     return losses.avg,(iou[0].avg+iou[1].avg)/2
     
 def test(test_loader, model, optimizer,epoch , config):
@@ -390,11 +404,12 @@ def get_params():
     parser.add_argument('-o', '--export', dest='export', default='checkpoint', type=str, metavar='PATH',
                         help='path to export checkpoint (default: checkpoint)')                   
     parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true', help='Evaluate mAP? default=False')  
-
+    parser.add_argument('--mosaic_num',  default=None, type=int, help='mosaic number in image augmentation')
     parser.add_argument('--ignore_thresh_1',  default=None, type=float, help='ignore layer 1')
     parser.add_argument('--ignore_thresh_2',  default=None, type=float, help='ignore layer 2')
     parser.add_argument('--iou_thresh',  default=None, type=float, help='ignore iou thresh')
     parser.add_argument('--expand_scale',  default=None, type=float, help='image augmentation expand scale')
+    parser.add_argument('--iou_weighting',  default=None, type=float, help='iou loss weighting')
     args = parser.parse_args()
     return args    
     
@@ -403,10 +418,15 @@ if __name__ == '__main__':
         # get parameters form tuner
         tuner_params = nni.get_next_parameter()
         #logger.debug(tuner_params)
+        print(tuner_params)
+        #if tuner_params.weight_decay != None :
+        #    tuner_params.weight_decay = float(tuner_params.weight_decay)
         params = merge_parameter(get_params(), tuner_params)
-        id = get_sequence_id()
-        params.checkpoint = 'checkpoints/nni/%d' % id
+        id = get_sequence_id() 
+        
+        params.checkpoint = 'checkpoints/nni/0512/%d' % id
         #print(params)
+        
         main(params)
     except Exception as exception:
         #logger.exception(exception)

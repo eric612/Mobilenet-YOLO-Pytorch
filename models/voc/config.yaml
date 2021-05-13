@@ -8,6 +8,8 @@ train_img_size:
   - [384, 384]
   - [416, 416]
 expand_scale: 1.7
+mosaic_num: [1,4]
+iou_weighting: 0.01
 yolo:
   num_classes: 20
   num_anchors: 3

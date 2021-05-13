@@ -30,7 +30,7 @@ class YOLOLoss(nn.Module):
             # https://zlatankr.github.io/posts/2017/03/06/mle-gradient-descent
             grad_input = grad_output.clone()
             return grad_input
-    def __init__(self, anchors, mask, num_classes, img_size,ignore_threshold,iou_thresh,val_conf = 0.1,):
+    def __init__(self, anchors, mask, num_classes, img_size,ignore_threshold,iou_thresh,val_conf = 0.1,iou_weighting = 0.01):
         super(YOLOLoss, self).__init__()
         self.anchors = anchors
         self.mask = mask;
@@ -47,6 +47,7 @@ class YOLOLoss(nn.Module):
         self.bce_loss = nn.BCELoss()
         self.label_smooth_eps = 0.1
         self.iou_thresh = iou_thresh
+        self.iou_weighting = iou_weighting
     
     def weighted_mse_loss(self,input, target, weights):
         out = (input - target)**2      
@@ -225,7 +226,12 @@ class YOLOLoss(nn.Module):
             #iou_loss = torch.Tensor(iou_loss)
             #print(loss,iou_loss)
             #loss = torch.cat((loss.unsqueeze(0) ,iou_loss.unsqueeze(0)))
-            loss = loss + iou_loss*0.01
+
+            if torch.isnan(iou_loss)==True or torch.isnan(loss)==True:
+                print('\n',loss,iou_loss,bs)
+                
+            loss = loss + iou_loss*self.iou_weighting
+            
             return loss, recall,avg_iou,obj,no_obj,cls_score,count 
 
         else:

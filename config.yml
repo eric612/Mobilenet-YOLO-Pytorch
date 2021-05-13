@@ -1,7 +1,7 @@
 authorName: default
 experimentName: example_yolo_pytorch
 trialConcurrency: 1
-maxExecDuration: 5d
+maxExecDuration: 30d
 maxTrialNum: 20
 #choice: local, remote, pai
 trainingServicePlatform: local
@@ -11,7 +11,7 @@ useAnnotation: false
 tuner:
   #choice: TPE, Random, Anneal, Evolution, BatchTuner, MetisTuner, GPTuner
   #SMAC (SMAC should be installed through nnictl)
-  builtinTunerName: MetisTuner
+  builtinTunerName: TPE
   classArgs:
     #choice: maximize, minimize
     optimize_mode: maximize

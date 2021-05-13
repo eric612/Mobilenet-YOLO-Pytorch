@@ -20,7 +20,7 @@ class GreedyBatchSampler(Sampler[List[int]]):
         [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
     """
 
-    def __init__(self, sampler: Sampler[int], batch_size: int, drop_last: bool) -> None:
+    def __init__(self, sampler: Sampler[int], batch_size: int, drop_last: bool,sample:list) -> None:
         # Since collections.abc.Iterable does not check for `__getitem__`, which
         # is one way for an object to be an iterable, we don't do an `isinstance`
         # check here.
@@ -34,6 +34,7 @@ class GreedyBatchSampler(Sampler[List[int]]):
         self.sampler = sampler
         self.batch_size = batch_size
         self.drop_last = drop_last
+        self.sample = sample
         #print('self.drop_last',self.drop_last)
         #self.mosaic_array = list()
 
@@ -53,14 +54,14 @@ class GreedyBatchSampler(Sampler[List[int]]):
     def __iter__(self):
         batch = []
         sample = [1,4]
-        num = self.get_random(sample)
+        num = self.get_random(self.sample)
         
         buckets = []
         for idx in self.sampler:
             buckets.append(idx)
             if len(buckets) == num :
                 batch.append(buckets)
-                num = self.get_random(sample)
+                num = self.get_random(self.sample)
                 buckets = []
             if len(batch) == self.batch_size:
                 yield batch

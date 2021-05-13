@@ -1,7 +1,10 @@
 {
-    "learning_rate":{"_type":"uniform","_value":[0.0003, 0.0006]},
+    "learning_rate":{"_type":"choice","_value":[0.0004,0.0005,0.0006,0.0007]},
     "ignore_thresh_1":{"_type":"uniform","_value":[0.6, 0.75]},
     "ignore_thresh_2":{"_type":"uniform","_value":[0.5, 0.65]},
     "iou_thresh":{"_type":"uniform","_value":[0.4, 0.6]},
-    "expand_scale":{"_type":"uniform","_value":[1, 2.5]}    
+    "expand_scale":{"_type":"uniform","_value":[1, 2.5]},   
+    "mosaic_num":{"_type":"choice", "_value": [[1,4],[2,3,4],[4]]},
+    "weight_decay":{"_type":"choice","_value":[1e-2,4e-3,4e-4,4e-5,4e-6]},
+    "iou_weighting":{"_type":"uniform","_value":[0.001, 0.1]}
 }
