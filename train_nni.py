@@ -22,7 +22,8 @@ import torchvision.models as models
 import folder2lmdb
 import CustomBatchSampler
 import cv2
-from models.voc.mbv2_yolo import yolo
+from models.voc.mbv3_yolo import yolo
+from models.voc.mbv3_yolo_macc import yolo_graph
 from models.voc.yolo_loss import *
 from utils import Bar, Logger, AverageMeter
 from utils.eval_mAP import *
