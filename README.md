@@ -30,7 +30,11 @@ sh scripts/VOC2012.sh
 ```
 sh scripts/train.sh 
 ```  
-## Hyper parameter tunning 
+## yolov3 training 
+
+see [branch](https://github.com/eric612/Mobilenet-YOLO-Pytorch/tree/yolov3)
+
+## Hyper parameter optimization 
 
 ```
 nnictl create --config config.yml
