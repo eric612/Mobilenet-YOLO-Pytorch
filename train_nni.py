@@ -22,8 +22,8 @@ import torchvision.models as models
 import folder2lmdb
 import CustomBatchSampler
 import cv2
-from models.voc.mbv3_yolo import yolo
-from models.voc.mbv3_yolo_macc import yolo_graph
+from models.voc.mbv2_yolo import yolo
+#from models.voc.mbv3_yolo_macc import yolo_graph
 from models.voc.yolo_loss import *
 from utils import Bar, Logger, AverageMeter
 from utils.eval_mAP import *
@@ -44,7 +44,8 @@ def seed_worker(worker_id):
     
 def main(args):
     #print('NNI_OUTPUT_DIR',os.environ["NNI_OUTPUT_DIR"])
-    writer = SummaryWriter(os.environ["NNI_OUTPUT_DIR"]+'/tensorboard/')
+    #writer = SummaryWriter(os.environ["NNI_OUTPUT_DIR"]+'/tensorboard/')
+    writer = SummaryWriter('tensorboard/')
     with open('models/voc/config.yaml', 'r') as f:
         config = yaml.load(f) 
     with open('data/voc_data.yaml', 'r') as f:
@@ -94,9 +95,9 @@ def main(args):
         test_dataset, config["batch_size"], shuffle=False,
         num_workers=4, pin_memory=True,collate_fn=test_dataset.collate_fn) 
     model = yolo(config=config)
-    model_for_graph = yolo_graph(config=config)        
+    #model_for_graph = yolo_graph(config=config)        
     input = torch.randn(1, 3, 352, 352)
-    writer.add_graph(model_for_graph,input)
+    #writer.add_graph(model_for_graph,input)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = model.cuda()
@@ -141,7 +142,6 @@ def main(args):
         if epoch in args.warm_up:
             adjust_learning_rate(optimizer, 0.5)
     for epoch in range(start_epoch, args.epochs):
-               
         # train for one epoch   
         if epoch in args.warm_up: 
             adjust_learning_rate(optimizer, 2)
@@ -386,15 +386,15 @@ def get_params():
     parser = argparse.ArgumentParser(description='PyTorch Training')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                         help='momentum')
-    parser.add_argument('--weight-decay', '--wd', default=4e-6, type=float,
+    parser.add_argument('--weight-decay', '--wd', default=0.0004, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
-    parser.add_argument('--learning_rate', default=0.0004, type=float,
+    parser.add_argument('--learning_rate', default=0.0007, type=float,
                         metavar='LR', help='initial learning rate') 
     parser.add_argument('--warm-up', '--warmup',  default=[], type=float,
                         metavar='warmup', help='warm up learning rate')                    
     parser.add_argument('--epochs', default=300, type=int, metavar='N',
                         help='number of total epochs to run')
-    parser.add_argument('--schedule', type=int, nargs='+', default=[120,200,250],
+    parser.add_argument('--schedule', type=int, nargs='+', default=[100,170,240],
                             help='Decrease learning rate at these epochs.')
     parser.add_argument('--resume', default='', type=str, metavar='PATH',
                         help='path to latest checkpoint (default: none)')
@@ -424,7 +424,6 @@ if __name__ == '__main__':
         #    tuner_params.weight_decay = float(tuner_params.weight_decay)
         params = merge_parameter(get_params(), tuner_params)
         id = get_sequence_id() 
-        
         params.checkpoint = 'checkpoints/nni/0512/%d' % id
         #print(params)
         

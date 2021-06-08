@@ -48,6 +48,7 @@ class YOLOLoss(nn.Module):
         self.label_smooth_eps = 0.1
         self.iou_thresh = iou_thresh
         self.iou_weighting = iou_weighting
+
     
     def weighted_mse_loss(self,input, target, weights):
         out = (input - target)**2      
