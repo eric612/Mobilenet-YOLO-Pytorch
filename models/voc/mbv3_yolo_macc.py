@@ -43,11 +43,11 @@ class BasicConv(nn.Module):
                 if m.bias is not None:
                     init.constant_(m.bias, 0)      
 class Upsample(nn.Module):
-    def __init__(self):
+    def __init__(self, in_channels, out_channels):
         super(Upsample, self).__init__()
 
         self.upsample = nn.Sequential(
-            #BasicConv(in_channels, out_channels, 1),
+            BasicConv(in_channels, out_channels, 1),
             nn.Upsample(scale_factor=2, mode='nearest')
         )
 
@@ -94,55 +94,47 @@ def PartAdd(x,y):
     new = torch.cat((new_1,new_2),1)
 
     return new        
-class yolo(nn.Module):
+class yolo_graph(nn.Module):
     def __init__(self,config):
-        super(yolo, self).__init__()
+        super(yolo_graph, self).__init__()
         self.num_classes = config["yolo"]["num_classes"]
         self.num_anchors = config["yolo"]["num_anchors"]
         #  backbone
         # https://drive.google.com/file/d/1HYPqCM1t8GDj9HnImKitM-QqdR8InxGB/view?usp=sharing
         self.backbone = MobileNetV3('mbv3_large.old.pth.tar')
 
-        self.conv_for_S32 = DepthwiseConvolution(960,320)
+        self.conv_for_S32 = BasicConv(960,512,1)
         #print(num_anchors * (5 + num_classes))
-        self.connect_for_S32 = Connect(320)
-        self.yolo_headS32 = yolo_head([960, self.num_anchors * (5 + self.num_classes)],320)
+        self.connect_for_S32 = Connect(512)
+        self.yolo_headS32 = yolo_head([1024, self.num_anchors * (5 + self.num_classes)],512)
         
         
-        self.upsample = Upsample()
-        #self.conv_for_S16 = Connect(160)
-        self.connect_for_S16 = Connect(160)
-        self.yolo_headS16 = yolo_head([640, self.num_anchors * (5 + self.num_classes)],320)
+        self.upsample = Upsample(512,256)
+        self.conv_for_S16 = DepthwiseConvolution(160,256)
+        self.connect_for_S16 = Connect(256)
+        self.yolo_headS16 = yolo_head([512, self.num_anchors * (5 + self.num_classes)],256)
 
-        self.yolo_losses = []
-        for i in range(2):
-            self.yolo_losses.append(YOLOLoss(config["yolo"]["anchors"],config["yolo"]["mask"][i] \
-                ,self.num_classes,[config["img_w"],config["img_h"]],config["yolo"]["ignore_thresh"][i],config["yolo"]["iou_thresh"],iou_weighting=config["iou_weighting"]))
+
 
     
     def forward(self, x, targets=None):
 
-        for i in range(2):
-            self.yolo_losses[i].img_size = [x.size(2),x.size(3)]
+
         feature1, feature2 = self.backbone(x)
         S32 = self.conv_for_S32(feature2)
         S32 = self.connect_for_S32(S32)
         out0 = self.yolo_headS32(S32) 
         S32_Upsample = self.upsample(S32)
-        #S16 = self.conv_for_S16(feature1)
-        S16 = self.connect_for_S16(feature1)
+        S16 = self.conv_for_S16(feature1)
+        #S16 = PartAdd(S16,S32_Upsample)
+        S16 = torch.add(S16,S32_Upsample)
         S16 = self.connect_for_S16(S16)
-        S16 = PartAdd(S16,S32_Upsample)
-        #S16 = torch.add(S16,S32_Upsample)
-        
         out1 = self.yolo_headS16(S16)
         
-        output = self.yolo_losses[0](out0,targets),self.yolo_losses[1](out1,targets)
-        if targets == None :
-            output = nms(output,self.num_classes)
+
 
         
-        return output
+        return out0,out1
     
 #def test():
 #    net = yolo(3,20)

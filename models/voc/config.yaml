@@ -7,10 +7,14 @@ train_img_size:
   - [288, 288]
   - [384, 384]
   - [416, 416]
+expand_scale: 2.1610954191879452
+mosaic_num: [1,4]
+iou_weighting: 0.021830872589525777
 yolo:
   num_classes: 20
   num_anchors: 3
-  iou_thres: [0.7, 0.6]
+  ignore_thresh: [0.6076333316652263, 0.5623606200028424]
+  iou_thresh: 0.5497280113447018
   anchors:
   - [143, 265]
   - [153, 121]

@@ -4,6 +4,7 @@ import random
 import shutil
 import time
 import warnings
+import numpy as np
 from progress.bar import (Bar, IncrementalBar)
 import torch
 import torch.nn as nn
@@ -19,6 +20,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 import folder2lmdb
+import CustomBatchSampler
 import cv2
 from models.voc.mbv2_yolo import yolo
 from models.voc.yolo_loss import *
@@ -26,60 +28,77 @@ from utils import Bar, Logger, AverageMeter
 from utils.eval_mAP import *
 from pprint import PrettyPrinter
 import yaml
+import nni
+from nni.utils import merge_parameter
+from nni.trial import get_sequence_id
+from nni.trial import get_trial_id
 pp = PrettyPrinter()
-parser = argparse.ArgumentParser(description='PyTorch Training')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
-                    help='momentum')
-parser.add_argument('--weight-decay', '--wd', default=4e-6, type=float,
-                    metavar='W', help='weight decay (default: 1e-4)')
-parser.add_argument('--lr', '--learning-rate', default=0.0005, type=float,
-                    metavar='LR', help='initial learning rate') 
-parser.add_argument('--warm-up', '--warmup',  default=[], type=float,
-                    metavar='warmup', help='warm up learning rate')                    
-parser.add_argument('--epochs', default=300, type=int, metavar='N',
-                    help='number of total epochs to run')
-parser.add_argument('--schedule', type=int, nargs='+', default=[125,200,250],
-                        help='Decrease learning rate at these epochs.')
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='path to latest checkpoint (default: none)')
-parser.add_argument('-c', '--checkpoint', default='checkpoint', type=str, metavar='PATH',
-                    help='path to save checkpoint (default: checkpoint)')
-parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-                    help='evaluate model on validation set')
-#parser.add_argument('-e', '--evaluate', type=bool, default=False, help='Evaluate mAP? default=False')   
-random.seed(10992)
-                              
-def main():
+from torch.utils.tensorboard import SummaryWriter 
 
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)         
+    
+def main(args):
+    #print('NNI_OUTPUT_DIR',os.environ["NNI_OUTPUT_DIR"])
+    #writer = SummaryWriter(os.environ["NNI_OUTPUT_DIR"]+'/tensorboard/')
+    if 'NNI_OUTPUT_DIR' not in os.environ:
+        writer = SummaryWriter('tensorboard/')
+    else:
+        writer = SummaryWriter(os.environ["NNI_OUTPUT_DIR"]+'/tensorboard/')
     with open('models/voc/config.yaml', 'r') as f:
         config = yaml.load(f) 
     with open('data/voc_data.yaml', 'r') as f:
-        dataset_path = yaml.load(f)         
+        dataset_path = yaml.load(f)   
+    if args.ignore_thresh_1 != None :
+        config["yolo"]["ignore_thresh"][0] = args.ignore_thresh_1 
+    if args.ignore_thresh_2 != None :
+        config["yolo"]["ignore_thresh"][1] = args.ignore_thresh_2
+    if args.iou_thresh != None :
+        config["yolo"]["iou_thresh"] = args.iou_thresh 
+    if args.expand_scale != None :
+        config["expand_scale"] = args.expand_scale 
+    if args.mosaic_num != None :
+        config["mosaic_num"] = args.mosaic_num 
+    if args.iou_weighting != None :
+        config["iou_weighting"] = args.iou_weighting         
     print(config)
     best_acc = 0  # best test accuracy
-    args = parser.parse_args()
+    #args = parser.parse_args()
     start_epoch = 0
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
-    image_folder = folder2lmdb.ImageFolderLMDB                                 
+    image_folder = folder2lmdb.ImageFolderLMDB
+
     train_dataset = image_folder(
         db_path=dataset_path["trainval_dataset_path"]["lmdb"],
         transform_size=config["train_img_size"],
-        phase='train'
-    )       
+        phase='train',batch_size = config["batch_size"],
+        expand_scale=config["expand_scale"]
+    )
+       
     test_dataset = image_folder(
         db_path=dataset_path["test_dataset_path"]["lmdb"],
         transform_size=[[config["img_w"],config["img_h"]]],
-        phase='test'
+        phase='test',batch_size = config["batch_size"]
     )    
+    BatchSampler  = CustomBatchSampler.GreedyBatchSampler                     
+    sampler = BatchSampler (
+        torch.utils.data.sampler.RandomSampler(train_dataset),
+        batch_size=config["batch_size"],
+        drop_last=False,sample=config["mosaic_num"])
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, config["batch_size"], shuffle=True,
-        num_workers=4, pin_memory=True,collate_fn=train_dataset.collate_fn)
+        train_dataset,batch_sampler = sampler, 
+        num_workers=4, pin_memory=True,collate_fn=train_dataset.collate_fn,
+        worker_init_fn=seed_worker)
     test_loader = torch.utils.data.DataLoader(
         test_dataset, config["batch_size"], shuffle=False,
         num_workers=4, pin_memory=True,collate_fn=test_dataset.collate_fn) 
     model = yolo(config=config)
-
+    #model_for_graph = yolo_graph(config=config)        
+    #input = torch.randn(1, 3, 352, 352)
+    #writer.add_graph(model_for_graph,input)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = model.cuda()
@@ -88,7 +107,7 @@ def main():
     not_biases = list()
 
     params = model.parameters()
-    optimizer = optim.AdamW(params=params,lr = args.lr)   
+    optimizer = optim.AdamW(params=params,lr = args.learning_rate,weight_decay= args.weight_decay)  
     if not os.path.exists(args.checkpoint):
         os.makedirs(args.checkpoint)    
     title = 'voc-training-process'
@@ -120,11 +139,11 @@ def main():
     #ls = len(args.warm_up)
     for epoch in range(start_epoch, args.epochs):
         if epoch in args.warm_up:
-            adjust_learning_rate(optimizer, 0.1)
+            adjust_learning_rate(optimizer, 0.5)
     for epoch in range(start_epoch, args.epochs):
         # train for one epoch   
         if epoch in args.warm_up: 
-            adjust_learning_rate(optimizer, 10)
+            adjust_learning_rate(optimizer, 2)
         if epoch in args.schedule:
             #load_best_checkpoint(model=model, save_path=args.save_path)
            
@@ -135,7 +154,7 @@ def main():
                     'best_acc': best_acc,
                     'optimizer' : optimizer.state_dict(),
                     'conf' : model.yolo_losses[0].val_conf,
-                }, False,model, checkpoint=args.checkpoint,filename='epoch%d_checkpoint.pth.tar'%epoch) 
+                }, False,model,config, checkpoint=args.checkpoint,filename='epoch%d_checkpoint.pth.tar'%epoch,export_path = args.export) 
             adjust_learning_rate(optimizer, 0.5)
             print('adjusted to current lr: '
                   '{}'.format([param_group['lr'] for param_group in optimizer.param_groups]))  
@@ -147,10 +166,12 @@ def main():
             print('\nEpoch: [%3d | %3d] LR: %f        | loss   | cnt | iou   | obj   | no_obj | class | recall | cnt2 | iou2  | obj2  | no_obj2 | class2 | recall2 |' \
                     % (epoch, args.epochs, optimizer.param_groups[0]['lr']))
         
-        train_loss,iou = train(train_loader, model, optimizer, epoch)
-        
+        train_loss,iou = train(train_loader, model, optimizer, epoch,sampler)
+        writer.add_scalar('Loss/train', train_loss, epoch)
+        writer.add_scalar('iou/train', iou, epoch)
         if not log :
             test_acc = test(test_loader, model, optimizer, epoch , config)  
+            nni.report_intermediate_result(test_acc)
             logger.append([epoch + 1, train_loss , test_acc, time.time()-st,iou, optimizer.param_groups[0]['lr']])
             # save model
             is_best = test_acc > best_acc
@@ -162,12 +183,13 @@ def main():
                     'best_acc': best_acc,
                     'optimizer' : optimizer.state_dict(),
                     'conf' : model.yolo_losses[0].val_conf,
-                }, is_best,model, checkpoint=args.checkpoint)
+                }, is_best,model,config, checkpoint=args.checkpoint,export_path = args.export)
+            writer.add_scalar('Accuracy/test', test_acc, epoch+ 1)
             
-        
-def train(train_loader, model, optimizer,epoch):
+    nni.report_final_result(best_acc)
+def train(train_loader, model, optimizer,epoch,sampler):
     model.train()
-    bar = IncrementalBar('Training', max=len(train_loader),width=12)
+    bar = IncrementalBar('Training', max=len(sampler),width=12)
     #batch_time = AverageMeter()
     #data_time = AverageMeter()
     losses = AverageMeter()
@@ -180,7 +202,9 @@ def train(train_loader, model, optimizer,epoch):
     cls_score = [AverageMeter(),AverageMeter()]
     count = [AverageMeter(),AverageMeter()]
     #end = time.time()
-    for batch_idx, (images,targets) in enumerate(train_loader):
+    for batch_idx, (images,targets,total_num) in enumerate(train_loader):
+        #print('\n1-',sum(sampler.get_mosaic_array()),'\n')
+        #print('1-',sampler.mosaic_array,'\n')
         #print(targets)
         #data_time.update(time.time() - end)
         bs = images.size(0)
@@ -237,7 +261,7 @@ def train(train_loader, model, optimizer,epoch):
             #cls=cls_loss.avg,
             )                
 
-        bar.next()
+        bar.next(total_num)
     bar.finish()
     return losses.avg,(iou[0].avg+iou[1].avg)/2
     
@@ -328,13 +352,15 @@ def test(test_loader, model, optimizer,epoch , config):
     pp.pprint(APs)
     print('\nMean Average Precision (mAP): %.3f' % mAP)
     return mAP
-def save_checkpoint(state, is_best,model, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best,model,config, checkpoint='checkpoint', filename='checkpoint.pth.tar',export_path = 'checkpoint'):
 
     filepath = os.path.join(checkpoint, filename)
     torch.save(state, filepath)
     #save_onnx(filepath,model)
     if is_best:
-        shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
+        torch.save(model, os.path.join(checkpoint, 'model_best.pth.tar'))
+        #dummy_input = torch.randn(1, 3, config["img_w"], config["img_h"]) #       
+        #torch.onnx.export(model, dummy_input,os.path.join(export_path, 'model_best.onnx'))        
 def adjust_confidence(gt_box_num,pred_box_num,conf):
     if pred_box_num>gt_box_num*3 :
         conf = conf + 0.01
@@ -351,6 +377,54 @@ def adjust_learning_rate(optimizer, scale):
     """
     for param_group in optimizer.param_groups:
         param_group['lr'] = param_group['lr'] * scale
-    print("Change learning rate.\n The new LR is %f\n" % (optimizer.param_groups[0]['lr']))        
+    print("Change learning rate.\n The new LR is %f\n" % (optimizer.param_groups[0]['lr']))  
+    
+def get_params():
+    # Training settings
+    parser = argparse.ArgumentParser(description='PyTorch Training')
+    parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
+                        help='momentum')
+    parser.add_argument('--weight-decay', '--wd', default=0.0004, type=float,
+                        metavar='W', help='weight decay (default: 1e-4)')
+    parser.add_argument('--learning_rate', default=0.0007, type=float,
+                        metavar='LR', help='initial learning rate') 
+    parser.add_argument('--warm-up', '--warmup',  default=[], type=float,
+                        metavar='warmup', help='warm up learning rate')                    
+    parser.add_argument('--epochs', default=300, type=int, metavar='N',
+                        help='number of total epochs to run')
+    parser.add_argument('--schedule', type=int, nargs='+', default=[100,170,240],
+                            help='Decrease learning rate at these epochs.')
+    parser.add_argument('--resume', default='', type=str, metavar='PATH',
+                        help='path to latest checkpoint (default: none)')
+    parser.add_argument('-c', '--checkpoint', default='checkpoint', type=str, metavar='PATH',
+                        help='path to save checkpoint (default: checkpoint)')
+    #parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
+    #                    help='evaluate model on validation set')
+    parser.add_argument('-o', '--export', dest='export', default='checkpoint', type=str, metavar='PATH',
+                        help='path to export checkpoint (default: checkpoint)')                   
+    parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true', help='Evaluate mAP? default=False')  
+    parser.add_argument('--mosaic_num',  default=None, type=int, help='mosaic number in image augmentation')
+    parser.add_argument('--ignore_thresh_1',  default=None, type=float, help='ignore layer 1')
+    parser.add_argument('--ignore_thresh_2',  default=None, type=float, help='ignore layer 2')
+    parser.add_argument('--iou_thresh',  default=None, type=float, help='ignore iou thresh')
+    parser.add_argument('--expand_scale',  default=None, type=float, help='image augmentation expand scale')
+    parser.add_argument('--iou_weighting',  default=None, type=float, help='iou loss weighting')
+    args = parser.parse_args()
+    return args    
+    
 if __name__ == '__main__':
-    main()
+    try:
+        # get parameters form tuner
+        tuner_params = nni.get_next_parameter()
+        #logger.debug(tuner_params)
+        print(tuner_params)
+
+        params = merge_parameter(get_params(), tuner_params)
+        id = get_sequence_id() 
+        params.checkpoint = 'checkpoints/%d' % id
+        #print(params)
+        
+        main(params)
+    except Exception as exception:
+        #logger.exception(exception)
+        raise
