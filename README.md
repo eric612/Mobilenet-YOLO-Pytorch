@@ -8,10 +8,9 @@ Like my previous project [Mobilenet-YOLO](https://github.com/eric612/MobileNet-Y
 
 A pytorch implementation of MobileNet-YOLO detection network , train on 07+12 , test on VOC2007 (imagenet pretrained , not coco)
 
-Network|mAP|Resolution|yolov3|yolov4|download|
-:---:|:---:|:---:|:---:|:---:|:---:|
-
-MobileNetV2|72.1|352| |✓|[checkpoint](https://drive.google.com/drive/folders/11iNLZA5sOZP2tiTQB6pz6TAA2u5xyYCa?usp=sharing)|
+Network|mAP|Resolution|download|
+:---:|:---:|:---:|:---:|
+MobileNetV2|72.1|352|[checkpoint](https://drive.google.com/drive/folders/11iNLZA5sOZP2tiTQB6pz6TAA2u5xyYCa?usp=sharing)|
 
 
 ## Training steps
