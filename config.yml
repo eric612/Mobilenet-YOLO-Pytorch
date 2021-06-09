@@ -17,7 +17,7 @@ tuner:
     optimize_mode: maximize
 
 trial:
-  command: python train_nni.py
+  command: python train.py
   codeDir: .
   gpuNum: 1
 localConfig:

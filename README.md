@@ -10,10 +10,9 @@ A pytorch implementation of MobileNet-YOLO detection network , train on 07+12 , 
 
 Network|mAP|Resolution|yolov3|yolov4|download|
 :---:|:---:|:---:|:---:|:---:|:---:|
-MobileNetV2|71.2|352|✓| |[checkpoint](https://drive.google.com/file/d/1PPfmv5aHz014jBiKiH2hL-YAQDOrm2hx/view?usp=sharing)|
+
 MobileNetV2|72.1|352| |✓|[checkpoint](https://drive.google.com/drive/folders/11iNLZA5sOZP2tiTQB6pz6TAA2u5xyYCa?usp=sharing)|
-MobileNetV3|71.5|352|✓| |[checkpoint](https://drive.google.com/file/d/18bq-em_xk4SMoM3eMnMmaHTOCuAPKhwp/view?usp=sharing)|
-MobileNetV3| |352| |✓| |
+
 
 ## Training steps
 

@@ -43,7 +43,10 @@ def seed_worker(worker_id):
 def main(args):
     #print('NNI_OUTPUT_DIR',os.environ["NNI_OUTPUT_DIR"])
     #writer = SummaryWriter(os.environ["NNI_OUTPUT_DIR"]+'/tensorboard/')
-    writer = SummaryWriter('tensorboard/')
+    if 'NNI_OUTPUT_DIR' not in os.environ:
+        writer = SummaryWriter('tensorboard/')
+    else:
+        writer = SummaryWriter(os.environ["NNI_OUTPUT_DIR"]+'/tensorboard/')
     with open('models/voc/config.yaml', 'r') as f:
         config = yaml.load(f) 
     with open('data/voc_data.yaml', 'r') as f:
@@ -93,7 +96,9 @@ def main(args):
         test_dataset, config["batch_size"], shuffle=False,
         num_workers=4, pin_memory=True,collate_fn=test_dataset.collate_fn) 
     model = yolo(config=config)
-
+    #model_for_graph = yolo_graph(config=config)        
+    #input = torch.randn(1, 3, 352, 352)
+    #writer.add_graph(model_for_graph,input)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = model.cuda()
@@ -416,7 +421,9 @@ if __name__ == '__main__':
 
         params = merge_parameter(get_params(), tuner_params)
         id = get_sequence_id() 
-
+        params.checkpoint = 'checkpoints/%d' % id
+        #print(params)
+        
         main(params)
     except Exception as exception:
         #logger.exception(exception)
