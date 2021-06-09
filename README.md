@@ -49,10 +49,10 @@ sh scripts/inference.sh
 ## Under construction
 
 - [ ] A new detector
-- [ ] yolov4,yolov5 ...
+- [x] yolov4
 - [ ] Multi-Task 
-- [ ] Hyper Parameter Tuning
-- [ ] Prning 
+- [x] Hyper Parameter Tuning
+- [ ] Pruning 
 - [ ] Porting (KL520 , ncnn , caffe , ...)
 
 ## Acknowledgements
