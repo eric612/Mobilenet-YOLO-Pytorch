@@ -10,6 +10,15 @@ ARG PYTHON_VERSION=3.8
 
 
 
+# install python dependencies
+    sysctl -w net.ipv4.ip_forward=1 && \
+    wget https://bootstrap.pypa.io/get-pip.py --progress=bar:force:noscroll && \
+    python${PYTHON_VERSION} get-pip.py && \
+    rm get-pip.py && \
+    pip${PYTHON_VERSION} install -r requirements.txt && \
+
+python train.py
+
 
 
 
