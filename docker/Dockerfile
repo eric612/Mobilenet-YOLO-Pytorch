@@ -25,20 +25,6 @@ ARG PYTHON_VERSION=3.8
     rm get-pip.py && \
     pip${PYTHON_VERSION} install numpy && \
 
-# install CMake
-    cd /home && \
-    wget https://github.com/Kitware/CMake/releases/download/v3.14.7/cmake-3.14.7-Linux-x86_64.tar.gz && \
-    tar -xvf cmake-3.14.7-Linux-x86_64.tar.gz && \
-    mv cmake-3.14.7-Linux-x86_64 /opt && \
-    echo "export PATH=/opt/cmake-3.14.7-Linux-x86_64/bin:$PATH" >> /etc/profile && \
-    . /etc/profile && \
-
-# # install nccl
-#     tar -xvf nccl.tar.gz && \
-#     cd /home/nccl && make -j install && cd .. && rm -rf nccl && \
-#     rm nccl.tar.gz && \
-    rm cmake-3.14.7-Linux-x86_64.tar.gz && \
-    cd ..  && \
 
 
 # Set the default python and install PIP packages
