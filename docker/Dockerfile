@@ -8,7 +8,14 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn${CUDNN_VERSION}-devel-ubuntu18.04
 
 ARG PYTHON_VERSION=3.8
 
-
+RUN export DEBIAN_FRONTEND=noninteractive \
+#         && apt-get clean && apt-get update && \
+        && apt-get update && \
+        CUDA_PATH=(/usr/local/cuda-*) && \
+    CUDA=`basename $CUDA_PATH` && \
+    echo "$CUDA_PATH/compat" >> /etc/ld.so.conf.d/${CUDA/./-}.conf && \
+    ldconfig && \
+    
 # Install all dependencies 
     apt-get -y update --fix-missing && \
     apt-get -y install --no-install-recommends \
