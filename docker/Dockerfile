@@ -52,6 +52,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     pip${PYTHON_VERSION} install Pillow && \
     pip${PYTHON_VERSION} install PyYAML && \
     pip${PYTHON_VERSION} install imgaug && \
+    pip${PYTHON_VERSION} install tensorboard && \
 # Set the default python and install PIP packages
     update-alternatives --install /usr/bin/python${PYTHON_VERSION%%.*} python${PYTHON_VERSION%%.*} /usr/bin/python${PYTHON_VERSION} 1 && \
     update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 
