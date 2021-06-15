@@ -40,7 +40,7 @@ nnictl create --config config.yml
 
 ## Demo
 
-Download  checkpoint, and save at $Mobilenet-YOLO-Pytorch/checkpoint/
+Download  [checkpoint](https://drive.google.com/file/d/1U79Nt3bsnQRlrUiPk_sAxunBcnlI1NRk/view?usp=sharing), and save at $Mobilenet-YOLO-Pytorch/checkpoint/
 
 ```
 sh scripts/inference.sh 

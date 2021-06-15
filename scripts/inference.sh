@@ -1,1 +1,1 @@
-python inference.py --checkpoint checkpoint/checkpoint.pth.tar
+python inference.py --checkpoint checkpoint/model_best.pth.tar

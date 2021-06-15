@@ -111,8 +111,8 @@ def inference_image(model, original_image,device):
 def load_model(model, path_trained_weight):
     checkpoint_backbone = torch.load(path_trained_weight)
     
-    pretrained_dict = checkpoint_backbone['model']
-    
+    pretrained_dict = checkpoint_backbone.state_dict()
+
     model_dict = model.state_dict()
     #for k, v in model_dict.items() :
         #if k[9:] in model_dict :
