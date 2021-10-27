@@ -54,7 +54,7 @@ CLASSES = (#'__background__',
            'sheep', 'sofa', 'train', 'tvmonitor')
         
 class ImageFolderLMDB(data.Dataset):
-    def __init__(self, db_path,batch_size,transform_size = [[352,352]], phase=None,expand_scale=1.5):
+    def __init__(self, db_path,batch_size,transform_size = [[352,352]], phase=None,expand_scale=1.5,mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225]):
         self.db_path = db_path
         self.env = lmdb.open(db_path, subdir=os.path.isdir(db_path),
                              readonly=True, lock=False,
@@ -62,9 +62,9 @@ class ImageFolderLMDB(data.Dataset):
         with self.env.begin(write=False) as txn:
             self.length = pickle.loads(txn.get(b'__len__'))
             self.keys = pickle.loads(txn.get(b'__keys__'))
-        self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])            
-        
+        self.normalize = transforms.Normalize(mean=mean,std=std)            
+        self.mean = mean
+        self.std = std
         self.transform_size = transform_size
         self.phase = phase
         self.img_aug = Image_Augmentation()
@@ -96,21 +96,27 @@ class ImageFolderLMDB(data.Dataset):
         #if self.phase == 'train':
         target2 = torch.Tensor(target)           
         boxes = target2[...,1:5]
+        if boxes.shape[0] == 0 :
+            #print(target2.shape)
+            boxes2 = torch.zeros(0,4)
+            labels = torch.zeros(0)
+        else :
+            x1 = (boxes[...,0] - boxes[...,2]/2).unsqueeze(1)
+            y1 = (boxes[...,1] - boxes[...,3]/2).unsqueeze(1)
+            x2 = (boxes[...,0] + boxes[...,2]/2).unsqueeze(1)
+            y2 = (boxes[...,1] + boxes[...,3]/2).unsqueeze(1)
+            boxes2 = torch.cat((x1*img.shape[1],y1*img.shape[0],x2*img.shape[1],y2*img.shape[0]),1)
+            #if boxes.size(0) :
+            labels = target2[...,0]
+            #print(boxes2)
+        #if labels == 7 :
 
-        x1 = (boxes[...,0] - boxes[...,2]/2).unsqueeze(1)
-        y1 = (boxes[...,1] - boxes[...,3]/2).unsqueeze(1)
-        x2 = (boxes[...,0] + boxes[...,2]/2).unsqueeze(1)
-        y2 = (boxes[...,1] + boxes[...,3]/2).unsqueeze(1)
-        boxes2 = torch.cat((x1*img.shape[1],y1*img.shape[0],x2*img.shape[1],y2*img.shape[0]),1)
-        #if boxes.size(0) :
-        labels = target2[...,0]
-        #print(boxes2)
         difficulties = torch.zeros_like(labels)
         img = seq(image=img)  # done by the library
         image = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
         
-        new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = self.phase,expand = expand,expand_scale = self.expand_scale)
-
+        new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, mean = self.mean,std = self.std,phase = self.phase,expand = expand,expand_scale = self.expand_scale)
+ 
         #self.show_image(new_img,new_boxes,new_labels)
 
         old_dims = torch.FloatTensor([new_img.width, new_img.height, new_img.width, new_img.height]).unsqueeze(0)
@@ -122,7 +128,6 @@ class ImageFolderLMDB(data.Dataset):
         y = (new_boxes2[...,1] + h/2).unsqueeze(1)
         #print(x.shape,y.shape,w.shape,h.shape,new_boxes.shape)
         new_boxes2 = torch.cat((x,y,w.unsqueeze(1),h.unsqueeze(1)),1)
-
         new_target = torch.cat((new_labels.unsqueeze(1),new_boxes2),1)
 
 
@@ -144,7 +149,7 @@ class ImageFolderLMDB(data.Dataset):
                 #self.show_image(img,tar[...,1:5],tar[...,0],convert=True)
                 return group[0][0],group[0][1],1     
             else :
-                b = self.img_aug.Mosaic(group,[800,800])
+                b = self.img_aug.Mosaic(group,[1000,1000])
                 #self.show_image(b[0],b[1][...,1:5].clone(),b[1][...,0].clone(),convert=True)
                 return b[0],b[1],len(index)
         else:
@@ -208,19 +213,25 @@ def raw_reader(path):
 def folder2lmdb(dataset_path, write_frequency=5000):
     directory = os.path.expanduser(dataset_path)
     print("Loading dataset from %s" % directory)
-
+    
     with open(dataset_path, 'r') as stream:
         data = yaml.load(stream)
+        print(data)
+        classes_name = data["classes"]["map"]
+        classes_name.insert(0, 'background')
+        ori_classes_name = data["classes"]["original"]
         trainval_dataset_path = data["trainval_dataset_path"]
         test_dataset_path = data["test_dataset_path"]
-  
+        ext_img = data["extention_names"]["image"]
+        ext_anno = data["extention_names"]["annotation"]
+    print(classes_name)
     trainval_dataset =  \
-        DatasetFromFile(trainval_dataset_path['imgs'],trainval_dataset_path['annos'],trainval_dataset_path['lists'], \
-        dataset_name=trainval_dataset_path['name'],phase = 'test',difficultie=False)
+        DatasetFromFile(trainval_dataset_path['imgs'],trainval_dataset_path['annos'],trainval_dataset_path['lists'],classes_name, \
+        dataset_name=trainval_dataset_path['name'],phase = 'test',difficultie=False,ext_img=ext_img,ext_anno=ext_anno,ori_classes_name=ori_classes_name)
         
     test_dataset =  \
-        DatasetFromFile(test_dataset_path['imgs'],test_dataset_path['annos'],test_dataset_path['lists'], \
-        dataset_name=test_dataset_path['name'],phase = 'test',difficultie=False)
+        DatasetFromFile(test_dataset_path['imgs'],test_dataset_path['annos'],test_dataset_path['lists'],classes_name, \
+        dataset_name=test_dataset_path['name'],phase = 'test',difficultie=False,ext_img=ext_img,ext_anno=ext_anno,ori_classes_name=ori_classes_name)
     outpath = trainval_dataset_path['lmdb'],test_dataset_path['lmdb']
     total_set = trainval_dataset,test_dataset
     for i in range(len(total_set)) :        

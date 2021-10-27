@@ -10,3 +10,10 @@ trainval_dataset_path:
   lists: [data/VOCdevkit/VOC2007/ImageSets/Main/trainval.txt, data/VOCdevkit/VOC2012/ImageSets/Main/trainval.txt]
   lmdb: train-lmdb
   name: voc_trainval
+classes:
+  original: ["aeroplane", "bicycle", "bird", "boat","bottle", "bus", "car", "cat", "chair","cow", "diningtable", "dog", "horse","motorbike", "person", "pottedplant","sheep", "sofa", "train", "tvmonitor"]
+  map: ["aeroplane", "bicycle", "bird", "boat","bottle", "bus", "car", "cat", "chair","cow", "diningtable", "dog", "horse","motorbike", "person", "pottedplant","sheep", "sofa", "train", "tvmonitor"]
+extention_names:
+    image: ["jpg"]
+    annotation: ["xml"]
+model_config_path: "models/voc/config.yaml"

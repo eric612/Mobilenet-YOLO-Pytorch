@@ -99,41 +99,45 @@ class Image_Augmentation():
                 top = random.randint(0, original_h - new_h)
                 bottom = top + new_h
                 crop = torch.FloatTensor([left, top, right, bottom])  # (4)
+                if boxes.shape[0]>0:
+                    # Calculate Jaccard overlap between the crop and the bounding boxes
+                    overlap = find_jaccard_overlap(crop.unsqueeze(0),boxes)  # (1, n_objects), n_objects is the no. of objects in this image
+                    overlap = overlap.squeeze(0)  # (n_objects)
 
-                # Calculate Jaccard overlap between the crop and the bounding boxes
-                overlap = find_jaccard_overlap(crop.unsqueeze(0),
-                                               boxes)  # (1, n_objects), n_objects is the no. of objects in this image
-                overlap = overlap.squeeze(0)  # (n_objects)
+                    # If not a single bounding box has a Jaccard overlap of greater than the minimum, try again
 
-                # If not a single bounding box has a Jaccard overlap of greater than the minimum, try again
-                if overlap.max().item() < min_overlap:
-                    continue
+                    if overlap.max().item() < min_overlap:
+                        continue
 
                 # Crop image
                 new_image = image[:, top:bottom, left:right]  # (3, new_h, new_w)
+                if boxes.shape[0]>0:
+                    # Find centers of original bounding boxes
+                    bb_centers = (boxes[:, :2] + boxes[:, 2:]) / 2.  # (n_objects, 2)
 
-                # Find centers of original bounding boxes
-                bb_centers = (boxes[:, :2] + boxes[:, 2:]) / 2.  # (n_objects, 2)
+                    # Find bounding boxes whose centers are in the crop
+                    centers_in_crop = (bb_centers[:, 0] > left) * (bb_centers[:, 0] < right) * (bb_centers[:, 1] > top) * (
+                            bb_centers[:, 1] < bottom)  # (n_objects), a Torch uInt8/Byte tensor, can be used as a boolean index
 
-                # Find bounding boxes whose centers are in the crop
-                centers_in_crop = (bb_centers[:, 0] > left) * (bb_centers[:, 0] < right) * (bb_centers[:, 1] > top) * (
-                        bb_centers[:, 1] < bottom)  # (n_objects), a Torch uInt8/Byte tensor, can be used as a boolean index
+                    # If not a single bounding box has its center in the crop, try again
+                    if not centers_in_crop.any():
+                        continue
 
-                # If not a single bounding box has its center in the crop, try again
-                if not centers_in_crop.any():
-                    continue
+                    # Discard bounding boxes that don't meet this criterion
 
-                # Discard bounding boxes that don't meet this criterion
+                    new_boxes = boxes[centers_in_crop, :]
+                    new_labels = labels[centers_in_crop]
+                    new_difficulties = difficulties[centers_in_crop]
 
-                new_boxes = boxes[centers_in_crop, :]
-                new_labels = labels[centers_in_crop]
-                new_difficulties = difficulties[centers_in_crop]
-
-                # Calculate bounding boxes' new coordinates in the crop
-                new_boxes[:, :2] = torch.max(new_boxes[:, :2], crop[:2])  # crop[:2] is [left, top]
-                new_boxes[:, :2] -= crop[:2]
-                new_boxes[:, 2:] = torch.min(new_boxes[:, 2:], crop[2:])  # crop[2:] is [right, bottom]
-                new_boxes[:, 2:] -= crop[:2]
+                    # Calculate bounding boxes' new coordinates in the crop
+                    new_boxes[:, :2] = torch.max(new_boxes[:, :2], crop[:2])  # crop[:2] is [left, top]
+                    new_boxes[:, :2] -= crop[:2]
+                    new_boxes[:, 2:] = torch.min(new_boxes[:, 2:], crop[2:])  # crop[2:] is [right, bottom]
+                    new_boxes[:, 2:] -= crop[:2]
+                else :
+                    new_boxes = boxes
+                    new_labels = labels
+                    new_difficulties = difficulties                 
 
                 return new_image, new_boxes, new_labels, new_difficulties
 
@@ -290,6 +294,7 @@ class Image_Augmentation():
         new_boxes = boxes
         new_labels = labels
         new_difficulties = difficulties
+
         # Skip the following operations if validation/evaluation
         if phase == 'train':
             # A series of photometric distortions in random order, each with 50% chance of occurrence, as in Caffe repo
@@ -304,8 +309,8 @@ class Image_Augmentation():
                 new_image, new_boxes = self.expand_od(new_image, boxes, filler=mean,expand_scale=expand_scale)
 
             # Randomly crop image (zoom in)
-            new_image, new_boxes, new_labels, new_difficulties = self.random_crop_od(new_image, new_boxes, new_labels,
-                                                                                new_difficulties)
+
+            new_image, new_boxes, new_labels, new_difficulties = self.random_crop_od(new_image, new_boxes, new_labels,new_difficulties)
 
             # Convert Torch tensor to PIL image
             new_image = FT.to_pil_image(new_image)

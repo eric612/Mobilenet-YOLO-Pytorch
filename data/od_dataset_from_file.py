@@ -4,26 +4,18 @@ import glob
 import os
 import torch
 from torch.utils.data.dataset import Dataset  # For custom datasets
-ext_img = ['jpg','bmp']
-ext_anno = ['xml']
+import json
+
 from tqdm import tqdm
 import pickle
 import xml.etree.ElementTree as ET
 #import image_augmentation as img_aug
 import cv2
 
-    
-CLASSES = ('__background__',
-           'aeroplane', 'bicycle', 'bird', 'boat',
-           'bottle', 'bus', 'car', 'cat', 'chair',
-           'cow', 'diningtable', 'dog', 'horse',
-           'motorbike', 'person', 'pottedplant',
-           'sheep', 'sofa', 'train', 'tvmonitor')
-classes_map = {k: v for v, k in enumerate(CLASSES)}
 #classes_map['background'] = 0
 
 class DatasetFromFile(Dataset):
-    def __init__(self, image_path,xml_path,imageset_list,dataset_name,phase='train',difficultie = True):
+    def __init__(self, image_path,xml_path,imageset_list,classes,dataset_name,phase='train',difficultie = True,ext_img = ['jpg','bmp'],ext_anno = ['xml','json'],ori_classes_name=None):
         
         # Get image list
         #self.img_folder_list = glob.glob(folder_path+'*')
@@ -31,8 +23,15 @@ class DatasetFromFile(Dataset):
         self.item_list = list()
         self.phase = phase
         self.difficultie = difficultie
+        self.classes = classes
+        self.classes_map = {k: v for v, k in enumerate(classes)}
+        self.ext_img = ext_img
+        self.ext_anno = ext_anno
         im_list = list()
-        
+        if ori_classes_name!=None:
+            self.ori_classes_name = ori_classes_name
+        else:
+            self.ori_classes_name = classes
         #print(type(image_path))
         self.list_name = 'data/%s.txt'%dataset_name
         
@@ -68,6 +67,7 @@ class DatasetFromFile(Dataset):
         single_image_path, single_anno_path = self.item_list[index]
         # Open image
         im = cv2.imread(single_image_path)
+        
         boxes, labels, difficulties = self.parse_annotation(single_anno_path)
         yolo_labels = list()
         height, width, channels = im.shape
@@ -107,14 +107,14 @@ class DatasetFromFile(Dataset):
     def parse_list(self,image_path,xml_path,im_list):    
         image_list = list()
         image_list.clear()
-        for i in ext_img :
+        for i in self.ext_img :
             pbar = tqdm(glob.glob(image_path+'/*.%s'%i))
             for f in pbar:
                 path, filename = os.path.split(f)
                 if any(filename[:-4] in s for s in im_list):
                     image_list.append(f)
                     pbar.set_description("Processing %s" % filename)   
-        for i in ext_anno :
+        for i in self.ext_anno :
                 pbar = tqdm(glob.glob(xml_path+'/*.%s'%i))
                 for f in pbar:
                     path, filename = os.path.split(f)
@@ -125,29 +125,62 @@ class DatasetFromFile(Dataset):
                             #print([img_f,f])
                             pbar.set_description("Processing %s" % filename) 
     def parse_annotation(self,annotation_path):
-        source = open(annotation_path)
-        tree = ET.parse(source)
-        root = tree.getroot()
+        filename, file_extension = os.path.splitext(annotation_path)
         boxes = list()
-        labels = list()
-        
-        difficulties = list()
-        for object in root.iter('object'):
-            difficult = int(object.find('difficult').text == '1')
-            label = object.find('name').text.lower().strip()
-            if label not in CLASSES:
-                continue
-            bbox = object.find('bndbox')
-            xmin = int(bbox.find('xmin').text) - 1
-            ymin = int(bbox.find('ymin').text) - 1
-            xmax = int(bbox.find('xmax').text) - 1
-            ymax = int(bbox.find('ymax').text) - 1
-            boxes.append([xmin, ymin, xmax, ymax])
-            #print(label)
-            labels.append(classes_map[label])
-            difficulties.append(difficult)
-        source.close()
-        return boxes, labels, difficulties    
+        labels = list()       
+        difficulties = list()   
+        # VOC format xml
+        if file_extension == '.xml':
+            source = open(annotation_path)
+            tree = ET.parse(source)
+            root = tree.getroot()
+
+            for object in root.iter('object'):
+                difficult = int(object.find('difficult').text == '1')
+                label = object.find('name').text.lower().strip()
+
+                if label not in self.classes:
+                    continue
+                bbox = object.find('bndbox')
+                xmin = int(bbox.find('xmin').text) - 1
+                ymin = int(bbox.find('ymin').text) - 1
+                xmax = int(bbox.find('xmax').text) - 1
+                ymax = int(bbox.find('ymax').text) - 1
+                boxes.append([xmin, ymin, xmax, ymax])
+                #print(label)
+                labels.append(self.classes_map[label])
+                difficulties.append(difficult)
+            source.close()
+            return boxes, labels, difficulties 
+        # COCO format json
+        elif file_extension == '.json':
+            with open(annotation_path, 'r') as f:
+                data=json.load(f)        
+            width = int(data['image']['width'])-1
+            height = int(data['image']['height'])-1
+            object_number = len(data['annotation'])
+            for j in range(object_number):
+                class_id = int(data['annotation'][j]['category_id'])-1
+                category_name = self.ori_classes_name[class_id]
+                if category_name in self.classes:
+                    new_class_id = self.classes.index(category_name)
+                    xmin = int(float(data['annotation'][j]['bbox'][0])+0.5)            
+                    ymin = int(float(data['annotation'][j]['bbox'][1])+0.5)
+                    if xmin<0:
+                        xmin = 0
+                    if ymin<0:
+                        ymin = 0                    
+                    xmax = int(float(data['annotation'][j]['bbox'][0])+float(data['annotation'][j]['bbox'][2])+0.5)
+                    ymax = int(float(data['annotation'][j]['bbox'][1])+float(data['annotation'][j]['bbox'][3])+0.5)
+                    if xmax>width:
+                        xmax = width
+                    if ymax>height:
+                        ymax = height    
+                    boxes.append([xmin, ymin, xmax, ymax])
+                    labels.append(new_class_id)
+                    difficulties.append(0)
+                    #print(xmin,ymin,class_id)
+            return boxes, labels, difficulties    
     def collate_fn(self, batch):
 
         images = list()

@@ -1,0 +1,19 @@
+test_dataset_path:
+  annos: [/media/eric/Data/bdd100k/annotations/val/]
+  imgs: [/media/eric/Data/bdd100k/images/val/]
+  lists: [/media/eric/Data/bdd100k/ImageSets/val.txt]
+  lmdb: bdd100k-test-lmdb
+  name: bdd100k_test
+trainval_dataset_path:
+  annos: [/media/eric/Data/bdd100k/annotations/train/]
+  imgs: [/media/eric/Data/bdd100k/images/train/]
+  lists: [/media/eric/Data/bdd100k/ImageSets/train.txt]
+  lmdb: bdd100k-train-lmdb
+  name: bdd100k_train
+classes:
+  original: ["person","rider", "car","bus","truck","bike","motor","traffic light","traffic sign","train"]
+  map: ["person","rider", "car","bus","truck","bike","motor"]
+extention_names:
+    image: ["jpg"]
+    annotation: ["json"]
+model_config_path: "models/bdd100k/config.yaml"

@@ -1,0 +1,27 @@
+img_h: 416
+img_w: 416
+batch_size: 16
+train_img_size:
+  - [416, 416]
+expand_scale: 1.3
+mosaic_num: [1]
+iou_weighting: 0.02
+normalize: 
+  mean: [0.5, 0.5, 0.5]
+  std: [1,1,1]
+yolo:
+  num_classes: 7
+  num_anchors: 3
+  ignore_thresh: [0.6, 0.55]
+  iou_thresh: 0.6
+  anchors:
+  - [34, 47]
+  - [66, 93]
+  - [122, 182]
+  - [6, 11]
+  - [11, 43]
+  - [16, 22]
+  classes: 7
+  mask:
+  - [0, 1, 2]
+  - [3, 4, 5]

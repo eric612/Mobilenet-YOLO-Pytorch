@@ -105,12 +105,10 @@ class YOLOLoss(nn.Module):
         in_dim = torch.Tensor([in_w,in_h])
         #print(need_grad_tensor.view(,self.num_classes+1).shape)
         for b in range(bs):
-
             if len(target[b]) == 0 :
                 targets_weight_parts[b] = 1
                 targets_parts[b] = 0
                 continue
-
             gt_boxes = target[b][...,1:].clone().detach().to(device)
             self.wh_to_x2y2(gt_boxes)   
             

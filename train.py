@@ -22,8 +22,9 @@ import torchvision.models as models
 import folder2lmdb
 import CustomBatchSampler
 import cv2
-from models.voc.mbv2_yolo import yolo
-from models.voc.yolo_loss import *
+
+from models.mbv2_yolo import yolo
+from models.yolo_loss import *
 from utils import Bar, Logger, AverageMeter
 from utils.eval_mAP import *
 from pprint import PrettyPrinter
@@ -47,10 +48,13 @@ def main(args):
         writer = SummaryWriter('tensorboard/')
     else:
         writer = SummaryWriter(os.environ["NNI_OUTPUT_DIR"]+'/tensorboard/')
-    with open('models/voc/config.yaml', 'r') as f:
-        config = yaml.load(f) 
+
     with open('data/voc_data.yaml', 'r') as f:
-        dataset_path = yaml.load(f)   
+        dataset_path = yaml.load(f)
+        classes_name = dataset_path["classes"]["map"]
+        classes_name.insert(0, 'background')
+    with open(dataset_path["model_config_path"], 'r') as f:
+        config = yaml.load(f)        
     if args.ignore_thresh_1 != None :
         config["yolo"]["ignore_thresh"][0] = args.ignore_thresh_1 
     if args.ignore_thresh_2 != None :
@@ -67,21 +71,24 @@ def main(args):
     best_acc = 0  # best test accuracy
     #args = parser.parse_args()
     start_epoch = 0
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
+
     image_folder = folder2lmdb.ImageFolderLMDB
 
     train_dataset = image_folder(
         db_path=dataset_path["trainval_dataset_path"]["lmdb"],
         transform_size=config["train_img_size"],
         phase='train',batch_size = config["batch_size"],
-        expand_scale=config["expand_scale"]
+        expand_scale=config["expand_scale"],
+        mean = config["normalize"]["mean"],
+        std = config["normalize"]["std"]
     )
        
     test_dataset = image_folder(
         db_path=dataset_path["test_dataset_path"]["lmdb"],
         transform_size=[[config["img_w"],config["img_h"]]],
-        phase='test',batch_size = config["batch_size"]
+        phase='test',batch_size = config["batch_size"],
+        mean = config["normalize"]["mean"],
+        std = config["normalize"]["std"]        
     )    
     BatchSampler  = CustomBatchSampler.GreedyBatchSampler                     
     sampler = BatchSampler (
@@ -90,11 +97,11 @@ def main(args):
         drop_last=False,sample=config["mosaic_num"])
     train_loader = torch.utils.data.DataLoader(
         train_dataset,batch_sampler = sampler, 
-        num_workers=4, pin_memory=True,collate_fn=train_dataset.collate_fn,
+        num_workers=4, pin_memory=False,collate_fn=train_dataset.collate_fn,
         worker_init_fn=seed_worker)
     test_loader = torch.utils.data.DataLoader(
         test_dataset, config["batch_size"], shuffle=False,
-        num_workers=4, pin_memory=True,collate_fn=test_dataset.collate_fn) 
+        num_workers=4, pin_memory=False,collate_fn=test_dataset.collate_fn) 
     model = yolo(config=config)
     #model_for_graph = yolo_graph(config=config)        
     #input = torch.randn(1, 3, 352, 352)
@@ -133,7 +140,7 @@ def main(args):
     test_acc = 0 
     if args.evaluate:
         for epoch in range(1):
-            test_acc = test(test_loader, model, optimizer, epoch , config)
+            test_acc = test(test_loader, model, optimizer, epoch , config, classes_name)
         return
         
     #ls = len(args.warm_up)
@@ -170,7 +177,7 @@ def main(args):
         writer.add_scalar('Loss/train', train_loss, epoch)
         writer.add_scalar('iou/train', iou, epoch)
         if not log :
-            test_acc = test(test_loader, model, optimizer, epoch , config)  
+            test_acc = test(test_loader, model, optimizer, epoch , config, classes_name)  
             nni.report_intermediate_result(test_acc)
             logger.append([epoch + 1, train_loss , test_acc, time.time()-st,iou, optimizer.param_groups[0]['lr']])
             # save model
@@ -265,7 +272,7 @@ def train(train_loader, model, optimizer,epoch,sampler):
     bar.finish()
     return losses.avg,(iou[0].avg+iou[1].avg)/2
     
-def test(test_loader, model, optimizer,epoch , config):
+def test(test_loader, model, optimizer,epoch , config, classes_name):
     
     # switch to evaluate mode
     model.eval()
@@ -348,7 +355,7 @@ def test(test_loader, model, optimizer,epoch , config):
     model.yolo_losses[1].val_conf = adjust_confidence(gt_box,pred_box,model.yolo_losses[1].val_conf)
     
     # Calculate mAP
-    APs, mAP, TP, FP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, n_classes=21)
+    APs, mAP, TP, FP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, classes_name)
     pp.pprint(APs)
     print('\nMean Average Precision (mAP): %.3f' % mAP)
     return mAP
@@ -421,7 +428,7 @@ if __name__ == '__main__':
 
         params = merge_parameter(get_params(), tuner_params)
         id = get_sequence_id() 
-        params.checkpoint = 'checkpoints/%d' % id
+        #params.checkpoint = 'checkpoints/%d' % id
         #print(params)
         
         main(params)

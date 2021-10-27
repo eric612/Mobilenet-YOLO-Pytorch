@@ -10,6 +10,9 @@ train_img_size:
 expand_scale: 2.1610954191879452
 mosaic_num: [1,4]
 iou_weighting: 0.021830872589525777
+normalize: 
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
 yolo:
   num_classes: 20
   num_anchors: 3
