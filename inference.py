@@ -97,10 +97,10 @@ def main(args):
         cv2.namedWindow('frame',cv2.WINDOW_NORMAL)
         cv2.resizeWindow('frame', width, height)
         annotated_image = cv2.cvtColor(np.asarray(annotated_image), cv2.COLOR_RGB2BGR)
-        
+        color_channel  = [1,2]
         for idx,map in enumerate(seg_maps):           
             mask = map>0.5
-            annotated_image[...,2][mask] = annotated_image[...,2][mask]*(1.0 - map[mask])
+            annotated_image[...,color_channel[idx]][mask] = annotated_image[...,color_channel[idx]][mask]*(1.0 - map[mask])
         cv2.imwrite('save/%s_result.jpg'%filename,annotated_image)
         cv2.imshow('frame',annotated_image)
         key = cv2.waitKey(0)         
