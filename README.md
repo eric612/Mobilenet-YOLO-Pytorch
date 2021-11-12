@@ -40,7 +40,7 @@ nnictl create --config config.yml
 
 ## Demo
 
-Download  [checkpoint](https://drive.google.com/file/d/1U79Nt3bsnQRlrUiPk_sAxunBcnlI1NRk/view?usp=sharing), and save at $Mobilenet-YOLO-Pytorch/checkpoint/
+Download  [checkpoint](https://drive.google.com/file/d/1eNIHaZGQHyb6WfOUmBuBU3K5urKFoL27/view?usp=sharing), and save at $Mobilenet-YOLO-Pytorch/checkpoints/bdd100k/model_best.pth.tar
 
 ```
 sh scripts/inference.sh 
@@ -50,10 +50,10 @@ sh scripts/inference.sh
 
 - [ ] A new detector
 - [x] yolov4
-- [ ] Multi-Task 
+- [x] Multi-Task 
 - [x] Hyper Parameter Tuning
 - [ ] Pruning 
-- [ ] Porting (KL520 , ncnn , caffe , ...)
+- [x] Porting KL720
 
 ## Acknowledgements
 
