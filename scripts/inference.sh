@@ -1,1 +1,1 @@
-python inference.py --checkpoint checkpoint/model_best.pth.tar
+python3 inference.py --checkpoint checkpoints/bdd100k/model_best.pth.tar -y data/bdd100k.yaml -i images/00690c26-e4bbbd72.jpg

@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from models.mobilenetv2 import mobilenetv2
 from models.yolo_loss import *
+from models.seg_loss import SegLoss
 from torch.nn import init
 import yaml
 from utils.box import nms
@@ -81,6 +82,14 @@ def yolo_head(filters_list, in_filters):
         nn.Conv2d(filters_list[0], filters_list[1], 1),
     )
     return m
+def seg_head(filters_list, in_filters):
+    m = nn.Sequential(
+        BasicConv(in_filters, in_filters, 3,depthwise=True),
+        BasicConv(in_filters, in_filters, 1),
+        BasicConv(in_filters, filters_list[0], 1),
+        nn.Conv2d(filters_list[0], filters_list[1], 1),
+    )
+    return m
 class Connect(nn.Module):
     def __init__(self, channels):
         super(Connect, self).__init__()
@@ -98,6 +107,11 @@ class yolo(nn.Module):
         super(yolo, self).__init__()
         self.num_classes = config["yolo"]["num_classes"]
         self.num_anchors = config["yolo"]["num_anchors"]
+        self.seg_loss = None
+        if "seg" in config:
+            self.seg_num_classes = config["seg"]["num_classes"]
+            self.seg_headS16 = seg_head([32, self.seg_num_classes], 32)
+            self.seg_loss = SegLoss(self.seg_num_classes)
         #  backbone
         model_url = 'https://raw.githubusercontent.com/d-li14/mobilenetv2.pytorch/master/pretrained/mobilenetv2-c5e733a8.pth'
         self.backbone = mobilenetv2(model_url)
@@ -110,14 +124,17 @@ class yolo(nn.Module):
         
         self.upsample = Upsample()
         self.conv_for_S16 = DepthwiseConvolution(96,512)
+        self.seg_conv_for_S16 = DepthwiseConvolution(96,32)
         self.connect_for_S16 = Connect(512)
+        self.seg_connect_for_S16 = Connect(32)
         self.yolo_headS16 = yolo_head([512, self.num_anchors * (5 + self.num_classes)],512)
+        
         self.yolo_losses = []
         for i in range(2):
             self.yolo_losses.append(YOLOLoss(config["yolo"]["anchors"],config["yolo"]["mask"][i] \
                 ,self.num_classes,[config["img_w"],config["img_h"]],config["yolo"]["ignore_thresh"][i],config["yolo"]["iou_thresh"],iou_weighting=config["iou_weighting"]))
-       
-    def forward(self, x, targets=None):
+        
+    def forward(self, x, targets=None, seg_maps=None):
 
         for i in range(2):
             self.yolo_losses[i].img_size = [x.size(2),x.size(3)]
@@ -135,12 +152,27 @@ class yolo(nn.Module):
        
         out1 = self.yolo_headS16(S16)
         
+        S16_branch = self.seg_conv_for_S16(feature1)
+        S16_branch = self.seg_connect_for_S16(S16_branch)
+        
         output = self.yolo_losses[0](out0,targets),self.yolo_losses[1](out1,targets)
         if targets == None :
             output = nms(output,self.num_classes)
-
+            if self.seg_loss!=None:
+                out2 = self.seg_headS16(S16_branch)
+                seg_out = self.seg_loss(out2)
+                return output,seg_out
+            else:
+                return output
+        else:
+            if self.seg_loss!=None:
+                out2 = self.seg_headS16(S16_branch)
+                seg_out = self.seg_loss(out2,seg_maps)
+                return output,seg_out
+            else:
+                return output
+            
         
-        return output
     
 #def test():
 #    net = yolo(3,20)

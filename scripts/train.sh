@@ -1,1 +1,1 @@
-python train.py --checkpoint checkpoints/voc/mobilenetv2
+python3 train.py --checkpoint checkpoints/bdd100k/mobilenetv2/ -y data/bdd100k.yaml
