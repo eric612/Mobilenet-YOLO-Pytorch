@@ -1,8 +1,6 @@
 # Mobilenet-YOLO-Pytorch
 
-Like my previous project [Mobilenet-YOLO](https://github.com/eric612/MobileNet-YOLO) , the loss function was very simular to original implemention of darknet
-
-![training process](/images/show.gif)
+![result](/save/00690c26-e4bbbd72_result.jpg)
 
 ## Model
 
