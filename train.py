@@ -22,7 +22,8 @@ import torchvision.models as models
 import folder2lmdb
 import CustomBatchSampler
 import cv2
-
+#from models.voc.mbv2_yolo import yolo
+#from models.voc.yolo_loss import *
 from models.mbv2_yolo import yolo
 from models.yolo_loss import *
 from utils import Bar, Logger, AverageMeter
@@ -48,11 +49,21 @@ def main(args):
         writer = SummaryWriter('tensorboard/')
     else:
         writer = SummaryWriter(os.environ["NNI_OUTPUT_DIR"]+'/tensorboard/')
+    #with open('models/voc/config.yaml', 'r') as f:
 
-    with open('data/voc_data.yaml', 'r') as f:
+    #with open('data/voc_data.yaml', 'r') as f:
+    with open(args.data_yaml, 'r') as f:
         dataset_path = yaml.load(f)
         classes_name = dataset_path["classes"]["map"]
         classes_name.insert(0, 'background')
+        segmentation_enable = False
+        segmentation_num_classes = 0
+        print(dataset_path)
+        if "segmentation_enable" in dataset_path:
+            segmentation_enable = dataset_path["segmentation_enable"]       
+        if "segmentation_num_classes" in dataset_path:
+            segmentation_num_classes = dataset_path["segmentation_num_classes"]	
+            
     with open(dataset_path["model_config_path"], 'r') as f:
         config = yaml.load(f)        
     if args.ignore_thresh_1 != None :
@@ -80,7 +91,10 @@ def main(args):
         phase='train',batch_size = config["batch_size"],
         expand_scale=config["expand_scale"],
         mean = config["normalize"]["mean"],
-        std = config["normalize"]["std"]
+        std = config["normalize"]["std"],
+        has_seg = segmentation_enable,
+        classes_name = classes_name,
+        seg_num_classes = segmentation_num_classes
     )
        
     test_dataset = image_folder(
@@ -88,7 +102,10 @@ def main(args):
         transform_size=[[config["img_w"],config["img_h"]]],
         phase='test',batch_size = config["batch_size"],
         mean = config["normalize"]["mean"],
-        std = config["normalize"]["std"]        
+        std = config["normalize"]["std"],
+        has_seg = False,
+        classes_name = classes_name,
+        seg_num_classes = segmentation_num_classes		        
     )    
     BatchSampler  = CustomBatchSampler.GreedyBatchSampler                     
     sampler = BatchSampler (
@@ -147,6 +164,7 @@ def main(args):
     for epoch in range(start_epoch, args.epochs):
         if epoch in args.warm_up:
             adjust_learning_rate(optimizer, 0.5)
+    st = time.time()
     for epoch in range(start_epoch, args.epochs):
         # train for one epoch   
         if epoch in args.warm_up: 
@@ -167,17 +185,22 @@ def main(args):
                   '{}'.format([param_group['lr'] for param_group in optimizer.param_groups]))  
             
         log = False
-        if epoch%2 == 0 :
-            log = True
-            st = time.time()
-            print('\nEpoch: [%3d | %3d] LR: %f        | loss   | cnt | iou   | obj   | no_obj | class | recall | cnt2 | iou2  | obj2  | no_obj2 | class2 | recall2 |' \
-                    % (epoch, args.epochs, optimizer.param_groups[0]['lr']))
         
-        train_loss,iou = train(train_loader, model, optimizer, epoch,sampler)
+        if epoch%2 == 0 :
+            log = True 
+            st = time.time()
+            if segmentation_enable:
+                print('\nEpoch: [%3d | %3d] LR: %f        | loss   | cnt  | iou   | obj   | no_obj | class | recall | s_obj | s_no_obj |' \
+                        % (epoch, args.epochs, optimizer.param_groups[0]['lr']))
+            else:
+                print('\nEpoch: [%3d | %3d] LR: %f        | loss   | cnt | iou   | obj   | no_obj | class | recall | cnt2 | iou2  | obj2  | no_obj2 | class2 | recall2 |' \
+                        % (epoch, args.epochs, optimizer.param_groups[0]['lr']))                
+        
+        train_loss,iou = train(train_loader, model, optimizer, epoch,sampler,segmentation_enable)
         writer.add_scalar('Loss/train', train_loss, epoch)
         writer.add_scalar('iou/train', iou, epoch)
         if not log :
-            test_acc = test(test_loader, model, optimizer, epoch , config, classes_name)  
+            test_acc = test(test_loader, model, optimizer, epoch , config, classes_name,segmentation_enable)  
             nni.report_intermediate_result(test_acc)
             logger.append([epoch + 1, train_loss , test_acc, time.time()-st,iou, optimizer.param_groups[0]['lr']])
             # save model
@@ -192,9 +215,18 @@ def main(args):
                     'conf' : model.yolo_losses[0].val_conf,
                 }, is_best,model,config, checkpoint=args.checkpoint,export_path = args.export)
             writer.add_scalar('Accuracy/test', test_acc, epoch+ 1)
+        else :
+            save_checkpoint({
+                    'epoch': epoch + 1,
+                    'model': model.state_dict(),
+                    'acc': test_acc,
+                    'best_acc': best_acc,
+                    'optimizer' : optimizer.state_dict(),
+                    'conf' : model.yolo_losses[0].val_conf,
+                }, False,model,config, checkpoint=args.checkpoint,export_path = args.export)            
             
     nni.report_final_result(best_acc)
-def train(train_loader, model, optimizer,epoch,sampler):
+def train(train_loader, model, optimizer,epoch,sampler,segmentation_enable):
     model.train()
     bar = IncrementalBar('Training', max=len(sampler),width=12)
     #batch_time = AverageMeter()
@@ -208,8 +240,10 @@ def train(train_loader, model, optimizer,epoch,sampler):
     cls_loss = [AverageMeter(),AverageMeter()]
     cls_score = [AverageMeter(),AverageMeter()]
     count = [AverageMeter(),AverageMeter()]
+    seg_obj = AverageMeter()
+    seg_no_obj = AverageMeter()
     #end = time.time()
-    for batch_idx, (images,targets,total_num) in enumerate(train_loader):
+    for batch_idx, (images,targets,total_num,seg_maps) in enumerate(train_loader):
         #print('\n1-',sum(sampler.get_mosaic_array()),'\n')
         #print('1-',sampler.mosaic_array,'\n')
         #print(targets)
@@ -219,10 +253,15 @@ def train(train_loader, model, optimizer,epoch,sampler):
         #print(i,targets[0])
         optimizer.zero_grad()
         images = images.to(device)  # (batch_size (N), 3, H, W)
-        outputs = model(images,targets)
+        if segmentation_enable:
+            seg_maps = seg_maps.to(device)  # (batch_size (N), H, W, num seg class)
+            outputs,seg_out = model(images,targets,seg_maps)
+        else:
+            outputs = model(images,targets,seg_maps)
         #losses0 = yolo_losses[0](outputs[0],targets)
         #losses1 = yolo_losses[1](outputs[1],targets) 
         t_loss = list()
+
         for i,l in enumerate(outputs):
             #print(l[0])
             t_loss.append(l[0])  
@@ -235,44 +274,63 @@ def train(train_loader, model, optimizer,epoch,sampler):
             #conf_loss.update(l[5])
             #cls_loss.update(l[6])
         loss = sum(t_loss)
+        if segmentation_enable:
+            seg_obj.update(seg_out[1])
+            seg_no_obj.update(seg_out[2])
+            loss += seg_out[0]
         losses.update(loss.item(),bs)
         loss.backward()
         optimizer.step()
         # measure elapsed time
         #batch_time.update(time.time() - end)
         #end = time.time()     
-        bar.suffix  = \
-            '%(percent)3d%% | {total:} | {loss:.4f} | {cnt1:2.1f} | {iou1:.3f} | {obj1:.3f} | {no_obj1:.4f} | {cls1:.3f} | {rec1:.3f}  | {cnt2:2.1f}  | {iou2:.3f} | {obj2:.3f} | {no_obj2:.4f}  | {cls2:.3f}  | {rec2:.3f}   |'\
-            .format(
-            #batch=batch_idx + 1,
-            #size=len(train_loader),
-            #data=data_time.avg,
-            #bt=batch_time.avg,
-            total=bar.elapsed_td,
-            loss=losses.avg,
-            #loss1=losses[0].avg,
-            #loss2=losses[1].avg,
-            cnt1=(count[0].avg),
-            cnt2=(count[1].avg),
-            #recall=recall.avg,
-            iou1=iou[0].avg,
-            iou2=iou[1].avg,
-            obj1=obj[0].avg,
-            no_obj1=no_obj[0].avg,
-            cls1=cls_score[0].avg,
-            obj2=obj[1].avg,
-            no_obj2=no_obj[1].avg,
-            cls2=cls_score[1].avg,
-            rec1=recall[0].avg,
-            rec2=recall[1].avg,
-            #cls=cls_loss.avg,
-            )                
-
+        if segmentation_enable:
+            bar.suffix  = \
+                '%(percent)3d%% | {total:} | {loss:.4f} | {cnt:2.1f} | {iou:.3f} | {obj:.3f} | {no_obj:.4f} | {cls:.3f} | {rec:.4f} | {seg_obj:.3f} | {seg_no_obj:.6f} |'\
+                .format(
+                total=bar.elapsed_td,
+                loss=losses.avg,
+                cnt=(count[0].avg+count[1].avg),
+                iou=(iou[0].avg+iou[1].avg)/2.,
+                obj=(obj[0].avg+obj[1].avg)/2.,
+                no_obj=(no_obj[0].avg+no_obj[1].avg)/2.,
+                cls=(cls_score[0].avg+cls_score[1].avg)/2.,
+                rec=(recall[0].avg+recall[1].avg)/2.,
+                seg_obj=seg_obj.avg,
+                seg_no_obj = seg_no_obj.avg
+                )                
+        else:
+            bar.suffix  = \
+                '%(percent)3d%% | {total:} | {loss:.4f} | {cnt1:2.1f} | {iou1:.3f} | {obj1:.3f} | {no_obj1:.4f} | {cls1:.3f} | {rec1:.3f}  | {cnt2:2.1f}  | {iou2:.3f} | {obj2:.3f} | {no_obj2:.4f}  | {cls2:.3f}  | {rec2:.3f}   |'\
+                .format(
+                #batch=batch_idx + 1,
+                #size=len(train_loader),
+                #data=data_time.avg,
+                #bt=batch_time.avg,
+                total=bar.elapsed_td,
+                loss=losses.avg,
+                #loss1=losses[0].avg,
+                #loss2=losses[1].avg,
+                cnt1=(count[0].avg),
+                cnt2=(count[1].avg),
+                #recall=recall.avg,
+                iou1=iou[0].avg,
+                iou2=iou[1].avg,
+                obj1=obj[0].avg,
+                no_obj1=no_obj[0].avg,
+                cls1=cls_score[0].avg,
+                obj2=obj[1].avg,
+                no_obj2=no_obj[1].avg,
+                cls2=cls_score[1].avg,
+                rec1=recall[0].avg,
+                rec2=recall[1].avg,
+                #cls=cls_loss.avg,
+                )              
         bar.next(total_num)
     bar.finish()
     return losses.avg,(iou[0].avg+iou[1].avg)/2
     
-def test(test_loader, model, optimizer,epoch , config, classes_name):
+def test(test_loader, model, optimizer,epoch , config, classes_name,segmentation_enable):
     
     # switch to evaluate mode
     model.eval()
@@ -302,7 +360,10 @@ def test(test_loader, model, optimizer,epoch , config, classes_name):
         bs = len(labels)
         # compute output
         with torch.no_grad():
-            detections = model(images)  # (N, num_defaultBoxes, 4), (N, num_defaultBoxes, n_classes)
+            if segmentation_enable:
+                detections,_ = model(images)  # (N, num_defaultBoxes, 4), (N, num_defaultBoxes, n_classes)
+            else:
+                detections = model(images)  # (N, num_defaultBoxes, 4), (N, num_defaultBoxes, n_classes)
             for sample_i in range(bs):
                 
                 # Get labels for sample where width is not zero (dummies)
@@ -349,6 +410,8 @@ def test(test_loader, model, optimizer,epoch , config, classes_name):
                     pred_box=pred_box
                     )
         bar.next()
+        #if batch_idx == 50:
+        #    break        
     bar.finish()
     print("\nVal conf. is %f\n" % (model.yolo_losses[0].val_conf))
     model.yolo_losses[0].val_conf = adjust_confidence(gt_box,pred_box,model.yolo_losses[0].val_conf)
@@ -387,8 +450,10 @@ def adjust_learning_rate(optimizer, scale):
     print("Change learning rate.\n The new LR is %f\n" % (optimizer.param_groups[0]['lr']))  
     
 def get_params():
-    # Training settings
+    # Training settings     
     parser = argparse.ArgumentParser(description='PyTorch Training')
+    parser.add_argument('-y', '--data_yaml', dest='data_yaml', default='data/voc_data.yaml', type=str, metavar='PATH',
+                        help='path to data_yaml')     
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                         help='momentum')
     parser.add_argument('--weight-decay', '--wd', default=0.0004, type=float,

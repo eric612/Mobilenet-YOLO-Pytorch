@@ -12,10 +12,19 @@ import xml.etree.ElementTree as ET
 #import image_augmentation as img_aug
 import cv2
 
+'''    
+CLASSES = ('__background__',
+           'aeroplane', 'bicycle', 'bird', 'boat',
+           'bottle', 'bus', 'car', 'cat', 'chair',
+           'cow', 'diningtable', 'dog', 'horse',
+           'motorbike', 'person', 'pottedplant',
+           'sheep', 'sofa', 'train', 'tvmonitor')
+'''
+
 #classes_map['background'] = 0
 
 class DatasetFromFile(Dataset):
-    def __init__(self, image_path,xml_path,imageset_list,classes,dataset_name,phase='train',difficultie = True,ext_img = ['jpg','bmp'],ext_anno = ['xml','json'],ori_classes_name=None):
+    def __init__(self, image_path,anno_path,seg_path,imageset_list,classes,dataset_name,phase='train',has_seg = False,difficultie = True,ext_img = ['jpg','bmp'],ext_anno = ['xml','json'],ext_seg=['png'],ori_classes_name=None):
         
         # Get image list
         #self.img_folder_list = glob.glob(folder_path+'*')
@@ -27,6 +36,9 @@ class DatasetFromFile(Dataset):
         self.classes_map = {k: v for v, k in enumerate(classes)}
         self.ext_img = ext_img
         self.ext_anno = ext_anno
+        self.has_seg = has_seg		
+        self.ext_seg = ext_seg
+        self.seg_path = seg_path
         im_list = list()
         if ori_classes_name!=None:
             self.ori_classes_name = ori_classes_name
@@ -40,14 +52,18 @@ class DatasetFromFile(Dataset):
             with open(self.list_name, "rb") as fp:   # Unpickling
                 self.item_list = pickle.load(fp)
         else:            
-            if type(imageset_list) is str and type(image_path) is str and type(xml_path) is str:
+
+            if type(imageset_list) is str and type(image_path) is str and type(anno_path) is str:
                 with open(imageset_list,'r') as f:
                     for line in f:
                         for word in line.split():
                            im_list.append(word)
-                self.parse_list(image_path,xml_path,im_list)
+                if self.has_seg:
+                    self.parse_list(image_path,anno_path,im_list,seg_path)
+                else:
+                    self.parse_list(image_path,anno_path,im_list)
             elif type(imageset_list) is list :
-                assert len(imageset_list) == len(image_path) == len(xml_path)
+                assert len(imageset_list) == len(image_path) == len(anno_path)
                 for idx in range(len(imageset_list)) :
                     set = imageset_list[idx]
                     im_list.clear()
@@ -55,7 +71,10 @@ class DatasetFromFile(Dataset):
                         for line in f:
                             for word in line.split():
                                im_list.append(word)
-                    self.parse_list(image_path[idx],xml_path[idx],im_list)
+                    if self.has_seg:
+                        self.parse_list(image_path[idx],anno_path[idx],im_list,seg_path[idx])
+                    else:
+                        self.parse_list(image_path[idx],anno_path[idx],im_list)
                                 
             with open(self.list_name, "wb") as fp:   #Pickling
                 pickle.dump(self.item_list, fp)
@@ -64,16 +83,23 @@ class DatasetFromFile(Dataset):
         #print(self.item_list)
     def __getitem__(self, index):
         # Get image name from the pandas df
-        single_image_path, single_anno_path = self.item_list[index]
+        if self.has_seg :
+            single_image_path, single_anno_path, single_seg_path = self.item_list[index]
+        else:
+            single_image_path, single_anno_path = self.item_list[index]
         # Open image
         im = cv2.imread(single_image_path)
-        
         boxes, labels, difficulties = self.parse_annotation(single_anno_path)
         yolo_labels = list()
         height, width, channels = im.shape
         im = cv2.imencode('.jpg', im,[int(cv2.IMWRITE_JPEG_QUALITY), 98])
-        yolo_labels = self.to_yolo_label(boxes,labels,difficulties,width,height)      
-        return (im, yolo_labels)
+        yolo_labels = self.to_yolo_label(boxes,labels,difficulties,width,height)
+        if self.has_seg :
+            im2 = cv2.imread(single_seg_path)      
+            im2 = cv2.imencode('.png', im2,[int(cv2.IMWRITE_PNG_COMPRESSION),1])
+            return (im, yolo_labels, im2)
+        else :            
+            return (im, yolo_labels)
 
     def __len__(self):
         return self.data_len
@@ -104,26 +130,46 @@ class DatasetFromFile(Dataset):
                 yolo_labels.append(yolo_label)
         return yolo_labels
 
-    def parse_list(self,image_path,xml_path,im_list):    
+    def parse_list(self,image_path,anno_path,im_list,seg_path=None):    
         image_list = list()
         image_list.clear()
-        for i in self.ext_img :
-            pbar = tqdm(glob.glob(image_path+'/*.%s'%i))
-            for f in pbar:
-                path, filename = os.path.split(f)
-                if any(filename[:-4] in s for s in im_list):
-                    image_list.append(f)
-                    pbar.set_description("Processing %s" % filename)   
-        for i in self.ext_anno :
-                pbar = tqdm(glob.glob(xml_path+'/*.%s'%i))
-                for f in pbar:
-                    path, filename = os.path.split(f)
-                    #if any(filename[:-4] in s for s in im_list):
-                    for img_f in image_list:
-                        if filename[:-4] in img_f :
-                            self.item_list.append([img_f,f])
-                            #print([img_f,f])
-                            pbar.set_description("Processing %s" % filename) 
+        seg_list = list()
+        seg_list.clear()
+        im_lists = tqdm(im_list)
+        seg_files = list()
+        if self.has_seg:
+            for i in self.ext_seg :
+                seg_files = seg_files + glob.glob(seg_path+'/*.%s'%i)
+
+        
+        for s in im_lists :
+            img_file = None
+            for i in self.ext_img :
+                filepath = "{}/{}.{}".format(image_path,s,i)
+                if os.path.isfile(filepath):
+                    img_file = filepath
+            anno_file = None
+            for i in self.ext_anno :
+                filepath = "{}/{}.{}".format(anno_path,s,i)
+                if os.path.isfile(filepath):
+                    anno_file = filepath
+            if self.has_seg:
+                for seg in seg_files:
+                    if s in seg :
+                        if img_file!=None and anno_file!=None :
+                            self.item_list.append([img_file,anno_file,seg])
+                            im_lists.set_description("Processing %s" % img_file)
+                        else:
+                            im_lists.set_description("Not find file %s" % s)
+                        break
+            elif img_file!=None and anno_file!=None :
+                self.item_list.append([img_file,anno_file])
+                im_lists.set_description("Processing %s" % img_file)
+            else:
+                im_lists.set_description("Not find file %s" % s)
+
+    def bound(low, high, value):
+        return max(low, min(high, value))                            
     def parse_annotation(self,annotation_path):
         filename, file_extension = os.path.splitext(annotation_path)
         boxes = list()

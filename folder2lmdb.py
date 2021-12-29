@@ -52,9 +52,9 @@ CLASSES = (#'__background__',
            'cow', 'diningtable', 'dog', 'horse',
            'motorbike', 'person', 'pottedplant',
            'sheep', 'sofa', 'train', 'tvmonitor')
-        
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")        
 class ImageFolderLMDB(data.Dataset):
-    def __init__(self, db_path,batch_size,transform_size = [[352,352]], phase=None,expand_scale=1.5,mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225]):
+    def __init__(self, db_path,batch_size,transform_size = [[352,352]], phase=None,expand_scale=1.5,mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225],has_seg = False, classes_name = CLASSES, seg_num_classes = 0):
         self.db_path = db_path
         self.env = lmdb.open(db_path, subdir=os.path.isdir(db_path),
                              readonly=True, lock=False,
@@ -71,10 +71,13 @@ class ImageFolderLMDB(data.Dataset):
         self.batch_size = batch_size
         self.count = 0
         self.expand_scale = expand_scale
+        self.has_seg = has_seg
+        self.classes_name = classes_name
+        self.seg_num_classes = seg_num_classes
         
     def get_single_image(self,index,expand=False,expand_scale=1.5):
     
-        img, target = None, None
+        img, target,img2 = None, None, None
         env = self.env
         
         with env.begin(write=False) as txn:
@@ -92,6 +95,19 @@ class ImageFolderLMDB(data.Dataset):
 
         # load label
         target = unpacked[1]
+        
+        if self.has_seg:
+            # load segmentation id
+            imgbuf = unpacked[2]
+            buf = six.BytesIO()
+            buf.write(imgbuf[1])
+            buf.seek(0)
+            X_str= np.fromstring(buf.read(), dtype=np.uint8)
+            img2 = cv2.imdecode(X_str, cv2.IMREAD_COLOR)     
+            img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+            seg_id = Image.fromarray(img2)
+        else :
+            seg_id = None
         
         #if self.phase == 'train':
         target2 = torch.Tensor(target)           
@@ -114,11 +130,15 @@ class ImageFolderLMDB(data.Dataset):
         difficulties = torch.zeros_like(labels)
         img = seq(image=img)  # done by the library
         image = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
+        #print(seg_id)
         
-        new_img, new_boxes, new_labels, new_difficulties = self.img_aug.transform_od(image, boxes2, labels, difficulties, mean = self.mean,std = self.std,phase = self.phase,expand = expand,expand_scale = self.expand_scale)
- 
-        #self.show_image(new_img,new_boxes,new_labels)
+        new_img, new_boxes, new_labels, new_difficulties, new_seg_id = self.img_aug.transform_od(image, boxes2, labels, difficulties,seg_id=seg_id, mean = [0.5, 0.5, 0.5],std = [1, 1, 1],phase = self.phase,expand = expand,expand_scale = self.expand_scale)
 
+        array = np.array(new_seg_id)
+        maps = list()
+        if self.has_seg:
+            for c in range(1,self.seg_num_classes+1):
+                maps.append(Image.fromarray(array==c))
         old_dims = torch.FloatTensor([new_img.width, new_img.height, new_img.width, new_img.height]).unsqueeze(0)
         new_boxes2 = new_boxes / old_dims  # percent coordinates
         
@@ -131,7 +151,7 @@ class ImageFolderLMDB(data.Dataset):
         new_target = torch.cat((new_labels.unsqueeze(1),new_boxes2),1)
 
 
-        return (new_img,new_target)
+        return (new_img,new_target,maps)
     def __getitem__(self, index):
         #print(index)
         
@@ -142,41 +162,56 @@ class ImageFolderLMDB(data.Dataset):
             s = len(index)
             
             for idx in index:
-                img,tar = self.get_single_image(idx,s==1)
-                group.append([img,tar])   
+                img,tar,seg_id = self.get_single_image(idx,s==1)
+                group.append([img,tar,seg_id])   
             
             if s == 1 :
                 #self.show_image(img,tar[...,1:5],tar[...,0],convert=True)
-                return group[0][0],group[0][1],1     
+                return group[0][0],group[0][1],1,group[0][2]     
             else :
                 b = self.img_aug.Mosaic(group,[1000,1000])
                 #self.show_image(b[0],b[1][...,1:5].clone(),b[1][...,0].clone(),convert=True)
                 return b[0],b[1],len(index)
         else:
-            img,tar = self.get_single_image(index)
+            img,tar,_ = self.get_single_image(index)
             return img,tar,1
-        
-    def show_image(self,image,boxes,labels,convert=False): 
     
-        cv_img = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
-        
-        for idx,box in enumerate(boxes) : 
-            if convert :
-                #print(box,cv_img.shape)
-                wh_to_x2y2(box)
-                #print(box,cv_img.shape)
-                box[0],box[2] = box[0]*cv_img.shape[1],box[2]*cv_img.shape[1]
-                box[1],box[3] = box[1]*cv_img.shape[0],box[3]*cv_img.shape[0]
+    def show_image(self,image,boxes=None,labels=None,convert=False,seg_id = False,gray_img_only = False,resize = None): 
+        if gray_img_only == True :
+            #print(image)
+            cv_img = np.array(image.convert('L'))
+            print(cv_img.shape)
+            if resize!=None :
+                cv_img = cv2.resize(cv_img, (resize[0], resize[1]), interpolation=cv2.INTER_AREA)
+            cv2.namedWindow('frame',cv2.WINDOW_NORMAL)
+            cv2.resizeWindow('frame', 640, 480)        
+            cv2.imshow('frame', cv_img)
+            key = cv2.waitKey(3) 
+        else :
+            cv_img = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
+            seg_id = (np.asarray(seg_id)!=0)*0.5
+            #print(seg_id)
+            #print(cv_img.shape,seg_id.shape)
+            #cv_img = cv2.bitwise_and(cv_img,cv_img,mask = seg_id)
+            cv_img[...,0] = cv_img[...,0]*seg_id + cv_img[...,0]*(seg_id==0)
+            cv_img[...,2] = cv_img[...,2]*seg_id + cv_img[...,2]*(seg_id==0)
+            for idx,box in enumerate(boxes) : 
+                if convert :
+                    #print(box,cv_img.shape)
+                    wh_to_x2y2(box)
+                    #print(box,cv_img.shape)
+                    box[0],box[2] = box[0]*cv_img.shape[1],box[2]*cv_img.shape[1]
+                    box[1],box[3] = box[1]*cv_img.shape[0],box[3]*cv_img.shape[0]
+                    
+                cv2.rectangle(cv_img, (int(box[0]),int(box[1])), (int(box[2]),int(box[3])), (0,255,0), 2)
+                text=self.classes_name[int(labels[idx])].lower()
+                cv2.putText(cv_img, text, (int(box[0]),int(box[1]-5)), cv2.FONT_HERSHEY_SIMPLEX,0.5, (0, 255, 255), 1, cv2.LINE_AA)
                 
-            cv2.rectangle(cv_img, (int(box[0]),int(box[1])), (int(box[2]),int(box[3])), (0,255,0), 2)
-            text=CLASSES[int(labels[idx])-1].lower()
-            cv2.putText(cv_img, text, (int(box[0]),int(box[1]-5)), cv2.FONT_HERSHEY_SIMPLEX,0.5, (0, 255, 255), 1, cv2.LINE_AA)
-            
-        cv2.namedWindow('frame',cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('frame', 640, 480)        
-        cv2.imshow('frame', cv_img)
-        key = cv2.waitKey(0) 
-        #cv2.imwrite('images//frame%04d.jpg'%self.count, cv_img)
+            cv2.namedWindow('frame',cv2.WINDOW_NORMAL)
+            cv2.resizeWindow('frame', 480, 480)        
+            cv2.imshow('frame', cv_img)
+            key = cv2.waitKey(0) 
+            #cv2.imwrite('images//frame%04d.jpg'%self.count, cv_img)
 
     def __len__(self):
         return self.length
@@ -188,20 +223,44 @@ class ImageFolderLMDB(data.Dataset):
     def collate_fn(self, batch):
         images = list()
         labels = list()
+        seg_maps = list()
         random_size = random.choice(self.transform_size)
+        seg_random_size = [int(number / 16) for number in random_size]
+        #print(seg_random_size)
         self.transform = transforms.Compose([
                 transforms.Resize(size=random_size, interpolation=interp),
                 transforms.ToTensor(),
                 self.normalize,
             ])  
+        self.transform_seg = transforms.Compose([
+                transforms.Resize(size=seg_random_size, interpolation=interp),
+                transforms.ToTensor(),
+            ])  
+             
         count = 0
+        
         for b in batch:
+            if self.has_seg:
+                maps = torch.zeros(seg_random_size[0],seg_random_size[1],self.seg_num_classes)
+                for i,m in enumerate(b[3]):
+                    cv_img = np.array(m.convert('L'))
+                    cv_img = cv2.resize(cv_img, (seg_random_size[0], seg_random_size[1]), interpolation=cv2.INTER_AREA)
+                    maps[...,i] = torch.Tensor(cv_img)/255.0 
+                    #self.show_image(m,gray_img_only=True,resize=seg_random_size)
+                seg_maps.append(maps)
+                    
             images.append(self.transform(b[0]))
-            labels.append(b[1])  
+            labels.append(b[1])                
             count = b[2] + count
         images = torch.stack(images, dim=0)
+
+        
         if self.phase == 'train':
-            return images, labels, count
+            if self.has_seg:
+                seg_maps = torch.stack(seg_maps, dim=0)
+                return images, labels, count, seg_maps
+            else:
+                return images, labels, count, None
         else :
             return images, labels  
 def raw_reader(path):
@@ -224,14 +283,28 @@ def folder2lmdb(dataset_path, write_frequency=5000):
         test_dataset_path = data["test_dataset_path"]
         ext_img = data["extention_names"]["image"]
         ext_anno = data["extention_names"]["annotation"]
-    print(classes_name)
-    trainval_dataset =  \
-        DatasetFromFile(trainval_dataset_path['imgs'],trainval_dataset_path['annos'],trainval_dataset_path['lists'],classes_name, \
-        dataset_name=trainval_dataset_path['name'],phase = 'test',difficultie=False,ext_img=ext_img,ext_anno=ext_anno,ori_classes_name=ori_classes_name)
+        segmentation_enable = data["segmentation_enable"]
+        if segmentation_enable:
+            ext_seg = data["extention_names"]["segmentation"]
         
-    test_dataset =  \
-        DatasetFromFile(test_dataset_path['imgs'],test_dataset_path['annos'],test_dataset_path['lists'],classes_name, \
-        dataset_name=test_dataset_path['name'],phase = 'test',difficultie=False,ext_img=ext_img,ext_anno=ext_anno,ori_classes_name=ori_classes_name)
+	
+    #print(classes_name)
+    if segmentation_enable:
+        trainval_dataset =  \
+            DatasetFromFile(trainval_dataset_path['imgs'],trainval_dataset_path['annos'],trainval_dataset_path['segs'],trainval_dataset_path['lists'],classes_name, \
+            dataset_name=trainval_dataset_path['name'],phase = 'test',has_seg = segmentation_enable,difficultie=False,ext_img=ext_img,ext_anno=ext_anno,ext_seg=ext_seg,ori_classes_name=ori_classes_name)
+            
+        test_dataset =  \
+            DatasetFromFile(test_dataset_path['imgs'],test_dataset_path['annos'],test_dataset_path['segs'],test_dataset_path['lists'],classes_name, \
+            dataset_name=test_dataset_path['name'],phase = 'test',has_seg = segmentation_enable,difficultie=False,ext_img=ext_img,ext_anno=ext_anno,ext_seg=ext_seg,ori_classes_name=ori_classes_name)
+    else :
+        trainval_dataset =  \
+            DatasetFromFile(trainval_dataset_path['imgs'],trainval_dataset_path['annos'],None,trainval_dataset_path['lists'],classes_name, \
+            dataset_name=trainval_dataset_path['name'],phase = 'test',has_seg = segmentation_enable,difficultie=False,ext_img=ext_img,ext_anno=ext_anno,ori_classes_name=ori_classes_name)
+            
+        test_dataset =  \
+            DatasetFromFile(test_dataset_path['imgs'],test_dataset_path['annos'],None,test_dataset_path['lists'],classes_name, \
+            dataset_name=test_dataset_path['name'],phase = 'test',has_seg = segmentation_enable,difficultie=False,ext_img=ext_img,ext_anno=ext_anno,ori_classes_name=ori_classes_name)    
     outpath = trainval_dataset_path['lmdb'],test_dataset_path['lmdb']
     total_set = trainval_dataset,test_dataset
     for i in range(len(total_set)) :        
@@ -249,15 +322,21 @@ def folder2lmdb(dataset_path, write_frequency=5000):
 
         txn = db.begin(write=True)
         sum = 0
+        
         for idx, data in enumerate(data_loader):
-	        image, label = data[0][0],data[0][1]
-	        sum += len(label)
-	        txn.put(u'{}'.format(idx).encode('ascii'), pickle.dumps((image, label)))
-	        #txn.put(u'{}'.format(idx).encode('ascii'), pa.serialize((image, label)).to_buffer())
-	        if idx % write_frequency == 0:
-	            print("[%d/%d]" % (idx, len(data_loader)))
-	            txn.commit()
-	            txn = db.begin(write=True)
+            if segmentation_enable:
+                image,label,seg = data[0][0],data[0][1],data[0][2]
+                txn.put(u'{}'.format(idx).encode('ascii'), pickle.dumps((image, label, seg)))
+            else:
+                image,label = data[0][0],data[0][1]
+                txn.put(u'{}'.format(idx).encode('ascii'), pickle.dumps((image, label)))
+            sum += len(label)
+            
+            #txn.put(u'{}'.format(idx).encode('ascii'), pa.serialize((image, label)).to_buffer())
+            if idx % write_frequency == 0:
+                print("[%d/%d]" % (idx, len(data_loader)))
+                txn.commit()
+                txn = db.begin(write=True)
 
         print('total box : %d'%sum)
         # finish iterating through dataset

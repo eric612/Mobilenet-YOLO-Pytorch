@@ -1,1 +1,1 @@
-python train.py --checkpoint checkpoints/voc/mobilenetv2
+python train.py --checkpoint checkpoints/voc/mobilenetv2/ -y data/voc_data.yaml

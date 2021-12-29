@@ -11,7 +11,7 @@ from utils.iou import*
 
 class Image_Augmentation():
 
-    def expand_od(self,image, boxes, filler,expand_scale):
+    def expand_od(self,image, boxes, filler,expand_scale, seg_id = None):
         """
         Perform a zooming out operation by placing the image in a larger canvas of filler material.
 
@@ -33,6 +33,7 @@ class Image_Augmentation():
         # Create such an image with the filler
         filler = torch.FloatTensor(filler)  # (3)
         new_image = torch.ones((3, new_h, new_w), dtype=torch.float) * filler.unsqueeze(1).unsqueeze(1)  # (3, new_h, new_w)
+        new_seg_id = torch.zeros((1, new_h, new_w), dtype=torch.float) 
         # Note - do not use expand() like new_image = filler.unsqueeze(1).unsqueeze(1).expand(3, new_h, new_w)
         # because all expanded values will share the same memory, so changing one pixel will change all
 
@@ -42,13 +43,15 @@ class Image_Augmentation():
         top = random.randint(0, new_h - original_h)
         bottom = top + original_h
         new_image[:, top:bottom, left:right] = image
-
+        if seg_id!=None:
+            new_seg_id[:, top:bottom, left:right] = seg_id
+        #print('\n',image.shape) 
         # Adjust bounding boxes' coordinates accordingly
         new_boxes = boxes + torch.FloatTensor([left, top, left, top]).unsqueeze(0)  # (n_objects, 4), n_objects is the no. of objects in this image
 
-        return new_image, new_boxes
+        return new_image, new_boxes, new_seg_id
 
-    def random_crop_od(self,image, boxes, labels, difficulties):
+    def random_crop_od(self,image, boxes, labels, difficulties, seg_id=None):
         """
         Performs a random crop in the manner stated in the paper. Helps to learn to detect larger and partial objects.
 
@@ -67,14 +70,11 @@ class Image_Augmentation():
         # Keep choosing a minimum overlap until a successful crop is made
         while True:
             # Randomly draw the value for minimum overlap
-            min_overlap = random.choice([0., .1, .3, .5, .7, .9, None])  # 'None' refers to no cropping
-            #min_overlap = min(abs(random.gauss(0, 0.6)),.9)
-            #min_overlap = random.choice([min_overlap,min_overlap/2, None])
-            #print(min_overlap)
-            #min_overlap = random.choice([0.,0.,.1,.1,.3,.5,.7, None])  # 'None' refers to no cropping
+            min_overlap = random.choice([0., .1, .2, .3, .4, .5, None])  # 'None' refers to no cropping
+
             # If not cropping
             if min_overlap is None:
-                return image, boxes, labels, difficulties
+                return image, boxes, labels, difficulties, seg_id
 
             # Try up to 50 times for this choice of minimum overlap
             # This isn't mentioned in the paper, of course, but 50 is chosen in paper authors' original Caffe repo
@@ -82,7 +82,7 @@ class Image_Augmentation():
             for _ in range(max_trials):
                 # Crop dimensions must be in [0.3, 1] of original dimensions
                 # Note - it's [0.1, 1] in the paper, but actually [0.3, 1] in the authors' repo
-                min_scale = 0.3
+                min_scale = 0.5
                 scale_h = random.uniform(min_scale, 1)
                 scale_w = random.uniform(min_scale, 1)
                 new_h = int(scale_h * original_h)
@@ -111,6 +111,9 @@ class Image_Augmentation():
 
                 # Crop image
                 new_image = image[:, top:bottom, left:right]  # (3, new_h, new_w)
+                new_seg_id = None
+                if seg_id!=None:
+                    new_seg_id = seg_id[:, top:bottom, left:right]  # (3, new_h, new_w)
                 if boxes.shape[0]>0:
                     # Find centers of original bounding boxes
                     bb_centers = (boxes[:, :2] + boxes[:, 2:]) / 2.  # (n_objects, 2)
@@ -139,9 +142,9 @@ class Image_Augmentation():
                     new_labels = labels
                     new_difficulties = difficulties                 
 
-                return new_image, new_boxes, new_labels, new_difficulties
+                return new_image, new_boxes, new_labels, new_difficulties, new_seg_id
 
-    def flip_od(self,image, boxes):
+    def flip_od(self,image, boxes, seg_id=None):
         """
         Flip image horizontally.
 
@@ -151,14 +154,16 @@ class Image_Augmentation():
         """
         # Flip image
         new_image = FT.hflip(image)
-
+        new_seg_id = None
+        if seg_id!=None:
+            new_seg_id = FT.hflip(seg_id)
         # Flip boxes
         new_boxes = boxes
         new_boxes[:, 0] = image.width - boxes[:, 0] - 1
         new_boxes[:, 2] = image.width - boxes[:, 2] - 1
         new_boxes = new_boxes[:, [2, 1, 0, 3]]
 
-        return new_image, new_boxes
+        return new_image, new_boxes, new_seg_id
 
 
     def photometric_distort(self,image):
@@ -222,7 +227,7 @@ class Image_Augmentation():
         num = len(source)
         mosaic_mask = self.generate_mosaic_mask(num,size)
         new_labels = torch.Tensor(0,5)
-        for img,label in source :
+        for img,label,_ in source :
 
             width, height = (mosaic_mask[counter][2]-mosaic_mask[counter][0]),(mosaic_mask[counter][3]-mosaic_mask[counter][1])
             aspect_ratio_src = img.height/img.width
@@ -271,7 +276,7 @@ class Image_Augmentation():
         new_img = Image.fromarray(background.astype(np.uint8))         
         new_data = [new_img,new_labels]
         return new_data
-    def transform_od(self,image, boxes, labels, difficulties, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = 'train',expand = True,expand_scale = 1.5):
+    def transform_od(self,image, boxes, labels, difficulties,seg_id = None, mean = [0.485, 0.456, 0.406],std = [0.229, 0.224, 0.225],phase = 'train',expand = True,expand_scale = 1.5):
         """
         Apply the transformations above.
 
@@ -293,6 +298,7 @@ class Image_Augmentation():
         new_image = image
         new_boxes = boxes
         new_labels = labels
+        new_seg_id = seg_id
         new_difficulties = difficulties
 
         # Skip the following operations if validation/evaluation
@@ -301,24 +307,28 @@ class Image_Augmentation():
             new_image = self.photometric_distort(new_image)
 
             # Convert PIL image to Torch tensor
+            #print(new_image)
             new_image = FT.to_tensor(new_image)
-            
+            if new_seg_id!=None:
+                new_seg_id = FT.to_tensor(new_seg_id)
             # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
             # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
+            #print(new_seg_id)
             if random.random() < 0.5 and expand==True:
-                new_image, new_boxes = self.expand_od(new_image, boxes, filler=mean,expand_scale=expand_scale)
-
+                new_image, new_boxes, new_seg_id = self.expand_od(new_image, boxes, filler=mean,expand_scale=expand_scale,seg_id = new_seg_id)
+            #print(new_seg_id)
             # Randomly crop image (zoom in)
-
-            new_image, new_boxes, new_labels, new_difficulties = self.random_crop_od(new_image, new_boxes, new_labels,new_difficulties)
+            
+            new_image, new_boxes, new_labels, new_difficulties, new_seg_id = self.random_crop_od(new_image, new_boxes, new_labels,new_difficulties, new_seg_id)
 
             # Convert Torch tensor to PIL image
             new_image = FT.to_pil_image(new_image)
-
+            if new_seg_id!=None:
+                new_seg_id = FT.to_pil_image(new_seg_id)
             # Flip image with a 50% chance
             if random.random() < 0.5:
-                new_image, new_boxes = self.flip_od(new_image, new_boxes)
+                new_image, new_boxes, new_seg_id = self.flip_od(new_image, new_boxes, new_seg_id)
                 
             #new_image, new_boxes, new_labels = self.mosaic_mix(new_image,new_boxes,new_labels)
 
-        return new_image, new_boxes, new_labels, new_difficulties
+        return new_image, new_boxes, new_labels, new_difficulties, new_seg_id
